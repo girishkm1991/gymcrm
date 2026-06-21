@@ -1,0 +1,316 @@
+import React, { useState, useEffect } from "react";
+import { 
+  Calendar, Search, Clock, PlusCircle, Check, X, ArrowUpRight, CheckSquare, RefreshCw
+} from "lucide-react";
+import api from "../services/api";
+import { Member, Attendance } from "../types";
+
+interface AttendanceViewProps {
+  user: any;
+}
+
+export default function AttendanceView({ user }: AttendanceViewProps) {
+  const [attendances, setAttendances] = useState<any[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Form toggles
+  const [isLogOpen, setIsLogOpen] = useState(false);
+
+  // Form values
+  const [memberId, setMemberId] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [timeIn, setTimeIn] = useState(new Date().toTimeString().split(" ")[0]);
+  const [remarks, setRemarks] = useState("");
+
+  async function loadAttendanceData() {
+    setLoading(true);
+    try {
+      const response = await api.get("/attendance");
+      setAttendances(response.data);
+
+      const memRes = await api.get("/members?limit=1000");
+      setMembers(memRes.data.data);
+    } catch (err) {
+      console.error("Failed to load attendance rosters.", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAttendanceData();
+  }, []);
+
+  const handleManualCheckIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!memberId) {
+      alert("Selected Member is required.");
+      return;
+    }
+
+    try {
+      await api.post("/attendance", {
+        memberId,
+        date,
+        timeIn,
+        remarks: remarks || "Manual Check-in Tracker"
+      });
+      setIsLogOpen(false);
+      setMemberId("");
+      setRemarks("");
+      loadAttendanceData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error checking in athlete.");
+    }
+  };
+
+  const handleCheckOut = async (attId: string) => {
+    try {
+      await api.put(`/attendance/${attId}`, {
+        timeOut: new Date().toTimeString().split(" ")[0]
+      });
+      loadAttendanceData();
+    } catch (err) {
+      alert("Error logging checkout departures.");
+    }
+  };
+
+  // Safe search
+  let filtered = attendances;
+  if (search) {
+    filtered = filtered.filter(
+      (a) =>
+        a.memberName.toLowerCase().includes(search.toLowerCase()) ||
+        a.memberEmail.toLowerCase().includes(search.toLowerCase()) ||
+        a.remarks.toLowerCase().includes(search.toLowerCase())
+    );
+  }
+
+  // Active checked in athletes (Time out is Null / blank)
+  const activeGymList = filtered.filter(a => !a.timeOut);
+  const standardArchivedList = filtered.filter(a => a.timeOut);
+
+  return (
+    <div className="space-y-6 text-zinc-100">
+      
+      {/* Dynamic Header */}
+      <div className="border-b border-zinc-850 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+            <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
+            Manual Attendance Registry
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            Mark athlete check-ins, record departures, and log notes manually inside this on-premise screen.
+          </p>
+        </div>
+
+        {user.role !== "MEMBER" && (
+          <button
+            type="button"
+            onClick={() => {
+              setTimeIn(new Date().toTimeString().split(" ")[0]);
+              setIsLogOpen(true);
+            }}
+            className="px-4.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-[0_4px_15px_rgba(245,158,11,0.2)]"
+          >
+            <PlusCircle className="w-4.5 h-4.5 stroke-[2.5]" /> Mark Check-in
+          </button>
+        )}
+      </div>
+
+      {/* Manual Check-in drawer */}
+      {isLogOpen && (
+        <div className="bg-zinc-950 border border-amber-500/20 p-5 rounded-2xl space-y-4 max-w-xl animate-slideDown">
+          <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+            <h3 className="text-sm font-bold text-amber-500 font-mono tracking-widest uppercase">Mark Onsite check-in</h3>
+            <button
+               type="button"
+               onClick={() => setIsLogOpen(false)}
+               className="p-1 hover:bg-zinc-900 rounded-lg cursor-pointer"
+            >
+              <X className="w-4.5 h-4.5 text-zinc-400" />
+            </button>
+          </div>
+
+          <form onSubmit={handleManualCheckIn} className="space-y-4 text-xs">
+            <div className="space-y-1">
+              <label className="text-zinc-500 font-mono font-bold uppercase block tracking-wider">MEMBER</label>
+              <select
+                value={memberId}
+                onChange={(e) => setMemberId(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-850 p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300 rounded-xl"
+                required
+              >
+                <option value="">Select active member...</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.fullName} ({m.memberId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-zinc-500 font-mono font-bold uppercase block tracking-wider">DATE</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-850 p-3 text-xs focus:border-amber-500 focus:outline-none text-white rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-zinc-500 font-mono font-bold uppercase block tracking-wider">CHECK-IN TIME</label>
+                <input
+                  type="text"
+                  placeholder="HH:MM:SS"
+                  value={timeIn}
+                  onChange={(e) => setTimeIn(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-850 p-3 text-xs focus:border-amber-500 focus:outline-none text-white rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-zinc-500 font-mono font-bold uppercase block tracking-wider">REMARKS / EXERCISE FOCUS</label>
+              <input
+                type="text"
+                placeholder="Squat focus, Zone 2 running, etc."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-850 p-3 text-xs focus:border-amber-500 focus:outline-none text-white rounded-xl"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsLogOpen(false)}
+                className="flex-1 py-2.5 bg-zinc-900 text-zinc-300 border border-zinc-800 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 bg-amber-500 text-black font-extrabold rounded-xl transition"
+              >
+                Check In Athlete
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Active checked in roster (Awaiting checkout) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Checked In Right Now Section */}
+        <div className="lg:col-span-1 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
+          <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+            <h3 className="text-xs font-bold font-mono tracking-widest text-emerald-400 uppercase flex items-center gap-1.5 leading-none">
+              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping shrink-0inline-block"></span>
+              On-Floor Right Now ({activeGymList.length})
+            </h3>
+            <span className="text-[10px] text-zinc-500 font-mono">Unsolved checkout slots</span>
+          </div>
+
+          <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+            {activeGymList.length === 0 ? (
+              <div className="text-center py-10 text-zinc-500 text-xs font-mono">
+                No active athletes on-floor right now.
+              </div>
+            ) : (
+              activeGymList.map((a) => (
+                <div key={a.id} className="p-3.5 bg-zinc-950 border border-zinc-850 rounded-xl space-y-2 flex justify-between items-start">
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-white text-xs">{a.memberName}</h4>
+                    <span className="text-[10px] font-mono text-zinc-500 block">Entered at: <span className="text-amber-500">{a.timeIn}</span></span>
+                    <span className="text-[10px] italic text-zinc-400 block truncate max-w-[200px]">Remarks: {a.remarks}</span>
+                  </div>
+                  {user.role !== "MEMBER" && (
+                    <button
+                      type="button"
+                      onClick={() => handleCheckOut(a.id)}
+                      className="px-2.5 py-1.5 bg-emerald-500 text-black font-black text-[10px] rounded hover:bg-emerald-400 cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                    >
+                      <Check className="w-3 h-3 stroke-[3]" /> Checkout
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Global Tabular Registers logs */}
+        <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-zinc-800 pb-2">
+            <h3 className="text-xs font-bold font-mono tracking-widest text-white uppercase">Today's Complete Registries log</h3>
+            <div className="relative w-full sm:w-60">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 w-3.5 h-3.5" />
+              <input
+                type="text"
+                placeholder="Search athlete names..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-1.5 pl-9 pr-3 text-white text-[11px] focus:-border-amber-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-sans text-xs">
+              <thead>
+                <tr className="text-[10px] font-mono tracking-wider text-zinc-500 border-b border-zinc-800">
+                  <th className="pb-2.5">Date & Name</th>
+                  <th className="pb-2.5">Duration Time In/Out</th>
+                  <th className="pb-2.5">Biological remarks</th>
+                  <th className="pb-2.5">Registrar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800 text-[11px]">
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="text-center py-6">
+                      <RefreshCw className="w-4 h-4 animate-spin text-zinc-500 mx-auto" />
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="text-center py-6 text-zinc-500 font-mono">No presence logs stored for this filter.</td>
+                  </tr>
+                ) : (
+                  filtered.map((a) => (
+                    <tr key={a.id} className="hover:bg-zinc-850/30">
+                      <td className="py-2">
+                        <span className="font-bold text-white block">{a.memberName}</span>
+                        <span className="text-[9px] text-zinc-400 font-mono">{a.date}</span>
+                      </td>
+                      <td className="py-2">
+                        <span className="text-zinc-300 font-mono font-medium block">In: {a.timeIn}</span>
+                        <span className="text-[10px] text-zinc-500 block">Out: {a.timeOut || "Active"}</span>
+                      </td>
+                      <td className="py-2 text-zinc-400 italic font-sans max-w-[150px] truncate">
+                        {a.remarks}
+                      </td>
+                      <td className="py-2 font-mono text-zinc-500">
+                        {a.markedBy}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+}

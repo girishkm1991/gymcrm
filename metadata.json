@@ -1,0 +1,6 @@
+{
+  "name": "GymFlow CRM",
+  "description": "Gym Management CRM SaaS featuring a multi-role modern dashboard, membership billing, attendance logs, and custom workout or diet plan managers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
