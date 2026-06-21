@@ -1495,8 +1495,14 @@ router.get("/dashboard/summary", authenticate, (req: Request, res: Response) => 
   }
 
   const membersCountTotal = db.getUsers().filter(u => u.gymId === gymId && u.role === "MEMBER").length;
-  const femaleCount = db.getMembers().filter(m => m.gymId === gymId && m.gender === "Female").length;
-  const maleCount = db.getMembers().filter(m => m.gymId === gymId && m.gender === "Male").length;
+  
+  const gymMembers = db.getMembers().filter(m => {
+    const userMatched = db.getUsers().find(u => u.id === m.id);
+    return userMatched && userMatched.gymId === gymId;
+  });
+  
+  const femaleCount = gymMembers.filter(m => m.gender === "Female").length;
+  const maleCount = gymMembers.filter(m => m.gender === "Male").length;
 
   const financial = ExpenseService.getFinancialMetrics(gymId);
   const membershipsStats = MembershipService.getDashboardMetrics(gymId);

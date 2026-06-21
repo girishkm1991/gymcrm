@@ -38,6 +38,7 @@ export interface User {
   passwordSalt: string;
   phone: string;
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  refreshToken?: string;
   createdAt: string;
 }
 
