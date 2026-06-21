@@ -116,6 +116,72 @@ export interface Invoice {
   taxAmount: number;
   totalAmount: number;
   issuedAt: string;
+  discount?: number;
+  dueDate?: string | null;
+  notes?: string | null;
+  status?: "Paid" | "Pending" | "Overdue";
+  paymentMode?: "Cash" | "UPI" | "Bank" | "Card";
+  membershipPlan?: string | null;
+  billingPeriod?: string | null;
+}
+
+export interface WhatsappSettings {
+  id: string;
+  gymId: string;
+  provider: "Meta" | "Twilio" | "360dialog" | "Interakt" | "AiSensy" | "WhatsAppWeb";
+  apiKey: string;
+  phoneNumberId: string;
+  wabaId: string;
+  status: "Active" | "Inactive";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessageTemplate {
+  id: string;
+  gymId: string;
+  type: string; // "Welcome Member", "Payment Received", "Invoice Generated", "Membership Renewal", "Membership Expiry", "Fee Due Reminder", "Birthday Wishes", "Festival Greetings", "Promotional Offer", "Attendance Reminder", "Gym Closed Notice"
+  title: string;
+  bodyText: string;
+  variables: string[]; // e.g. ["MemberName", "GymName", "Amount", "DueDate", "InvoiceNumber", "MembershipPlan"]
+  updatedAt: string;
+}
+
+export interface CommunicationLog {
+  id: string;
+  gymId: string;
+  memberId: string;
+  memberName: string;
+  type: string; // "WhatsApp", "Email", "SMS"
+  category: string; // Template category, e.g. "Welcome Member", "Invoice Generated"
+  message: string;
+  status: "Sent" | "Failed" | "Pending";
+  sentAt: string;
+}
+
+export interface BillingReminder {
+  id: string;
+  gymId: string;
+  memberId: string;
+  memberName: string;
+  planName: string;
+  amount: number;
+  type: "Membership Expiry" | "Payment Overdue" | "Pending Payment" | "Due Soon";
+  status: "Pending" | "Sent" | "Dismissed";
+  dueDate: string;
+  daysRemaining: number;
+  createdAt: string;
+}
+
+export interface GeneratedDocument {
+  id: string;
+  gymId: string;
+  memberId: string;
+  type: "Invoice" | "Receipt" | "MembershipCard";
+  referenceId: string; // e.g. invoiceNo or paymentId
+  filePath: string;
+  fileSize: number;
+  createdAt: string;
 }
 
 export interface Attendance {
@@ -311,6 +377,11 @@ export interface DatabaseStructure {
   memberProgress: MemberProgress[];
   memberProgressPhotos: MemberProgressPhoto[];
   memberTimeline: MemberTimeline[];
+  whatsappSettings?: WhatsappSettings[];
+  messageTemplates?: MessageTemplate[];
+  communicationLogs?: CommunicationLog[];
+  billingReminders?: BillingReminder[];
+  generatedDocuments?: GeneratedDocument[];
 }
 
 // Create a singleton DB helper class
@@ -457,6 +528,18 @@ class CRMDatabase {
       const [photosRows] = await conn.query("SELECT * FROM member_progress_photos");
       const [timelineRows] = await conn.query("SELECT * FROM member_timeline");
 
+      let whatsappSettingsRows = [];
+      let messageTemplatesRows = [];
+      let communicationLogsRows = [];
+      let billingRemindersRows = [];
+      let generatedDocumentsRows = [];
+
+      try { const [rows] = await conn.query("SELECT * FROM whatsapp_settings"); whatsappSettingsRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await conn.query("SELECT * FROM message_templates"); messageTemplatesRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await conn.query("SELECT * FROM communication_logs"); communicationLogsRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await conn.query("SELECT * FROM billing_reminders"); billingRemindersRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await conn.query("SELECT * FROM generated_documents"); generatedDocumentsRows = rows as any[]; } catch (e) {}
+
       this.data = {
         roles: rolesRows as Role[],
         permissions: permissionsRows as Permission[],
@@ -466,7 +549,12 @@ class CRMDatabase {
         membershipPlans: membershipPlansRows as MembershipPlan[],
         memberMemberships: memberMembershipsRows as MemberMembership[],
         payments: paymentsRows as Payment[],
-        invoices: invoicesRows as Invoice[],
+        invoices: (invoicesRows as any[]).map(inv => ({
+          ...inv,
+          discount: inv.discount || 0,
+          status: inv.status || 'Paid',
+          paymentMode: inv.paymentMode || 'Cash'
+        })),
         attendance: attendanceRows as Attendance[],
         workoutPlans: (workoutPlansRows as any[]).map(w => ({
           ...w,
@@ -488,7 +576,15 @@ class CRMDatabase {
         futureCameraAttendance: futureCameraAttendanceRows as FutureCameraAttendance[],
         memberProgress: progressRows as MemberProgress[],
         memberProgressPhotos: photosRows as MemberProgressPhoto[],
-        memberTimeline: timelineRows as MemberTimeline[]
+        memberTimeline: timelineRows as MemberTimeline[],
+        whatsappSettings: whatsappSettingsRows.map((s: any) => ({ ...s })),
+        messageTemplates: messageTemplatesRows.map((t: any) => ({
+          ...t,
+          variables: typeof t.variables === 'string' ? JSON.parse(t.variables) : (t.variables || [])
+        })),
+        communicationLogs: communicationLogsRows.map((l: any) => ({ ...l })),
+        billingReminders: billingRemindersRows.map((r: any) => ({ ...r })),
+        generatedDocuments: generatedDocumentsRows.map((d: any) => ({ ...d }))
       };
 
       this.isMySQLActive = true;
@@ -560,7 +656,10 @@ class CRMDatabase {
 
       await conn.query("DELETE FROM invoices");
       for (const i of this.data.invoices) {
-        await conn.query("INSERT INTO invoices (id, invoiceNo, paymentId, gymId, memberId, memberName, memberEmail, amount, taxAmount, totalAmount, issuedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [i.id, i.invoiceNo, i.paymentId, i.gymId, i.memberId, i.memberName, i.memberEmail, i.amount, i.taxAmount, i.totalAmount, i.issuedAt]);
+        await conn.query("INSERT INTO invoices (id, invoiceNo, paymentId, gymId, memberId, memberName, memberEmail, amount, taxAmount, totalAmount, issuedAt, discount, dueDate, notes, status, paymentMode, membershipPlan, billingPeriod) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+          i.id, i.invoiceNo, i.paymentId, i.gymId, i.memberId, i.memberName, i.memberEmail, i.amount, i.taxAmount, i.totalAmount, i.issuedAt,
+          i.discount || 0, i.dueDate || null, i.notes || null, i.status || "Paid", i.paymentMode || "Cash", i.membershipPlan || null, i.billingPeriod || null
+        ]);
       }
 
       await conn.query("DELETE FROM attendance");
@@ -617,6 +716,41 @@ class CRMDatabase {
       for (const tl of this.data.memberTimeline || []) {
         await conn.query("INSERT INTO member_timeline (id, gymId, memberId, date, type, title, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [tl.id, tl.gymId, tl.memberId, tl.date, tl.type, tl.title, tl.description, tl.createdAt]);
       }
+
+      try {
+        await conn.query("DELETE FROM whatsapp_settings");
+        for (const s of this.data.whatsappSettings || []) {
+          await conn.query("INSERT INTO whatsapp_settings (id, gymId, provider, apiKey, phoneNumberId, wabaId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [s.id, s.gymId, s.provider, s.apiKey, s.phoneNumberId, s.wabaId, s.status, s.createdAt, s.updatedAt]);
+        }
+      } catch (e) {}
+
+      try {
+        await conn.query("DELETE FROM message_templates");
+        for (const t of this.data.messageTemplates || []) {
+          await conn.query("INSERT INTO message_templates (id, gymId, type, title, bodyText, variables, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)", [t.id, t.gymId, t.type, t.title, t.bodyText, JSON.stringify(t.variables), t.updatedAt]);
+        }
+      } catch (e) {}
+
+      try {
+        await conn.query("DELETE FROM communication_logs");
+        for (const l of this.data.communicationLogs || []) {
+          await conn.query("INSERT INTO communication_logs (id, gymId, memberId, memberName, type, category, message, status, sentAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [l.id, l.gymId, l.memberId, l.memberName, l.type, l.category, l.message, l.status, l.sentAt]);
+        }
+      } catch (e) {}
+
+      try {
+        await conn.query("DELETE FROM billing_reminders");
+        for (const r of this.data.billingReminders || []) {
+          await conn.query("INSERT INTO billing_reminders (id, gymId, memberId, memberName, planName, amount, type, status, dueDate, daysRemaining, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [r.id, r.gymId, r.memberId, r.memberName, r.planName, r.amount, r.type, r.status, r.dueDate, r.daysRemaining, r.createdAt]);
+        }
+      } catch (e) {}
+
+      try {
+        await conn.query("DELETE FROM generated_documents");
+        for (const d of this.data.generatedDocuments || []) {
+          await conn.query("INSERT INTO generated_documents (id, gymId, memberId, type, referenceId, filePath, fileSize, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [d.id, d.gymId, d.memberId, d.type, d.referenceId, d.filePath, d.fileSize, d.createdAt]);
+        }
+      } catch (e) {}
 
       await conn.commit();
     } catch (err) {
@@ -769,6 +903,12 @@ class CRMDatabase {
         if (!parsed.expenses) parsed.expenses = seeded.expenses;
         if (!parsed.settings) parsed.settings = seeded.settings;
         if (!parsed.auditLogs) parsed.auditLogs = seeded.auditLogs;
+        
+        if (!parsed.whatsappSettings) parsed.whatsappSettings = seeded.whatsappSettings || [];
+        if (!parsed.messageTemplates) parsed.messageTemplates = seeded.messageTemplates || [];
+        if (!parsed.communicationLogs) parsed.communicationLogs = seeded.communicationLogs || [];
+        if (!parsed.billingReminders) parsed.billingReminders = seeded.billingReminders || [];
+        if (!parsed.generatedDocuments) parsed.generatedDocuments = seeded.generatedDocuments || [];
         
         if (!parsed.memberProgress) parsed.memberProgress = [];
         if (!parsed.memberProgressPhotos) parsed.memberProgressPhotos = [];
@@ -1580,6 +1720,126 @@ class CRMDatabase {
       }
     ];
 
+    const messageTemplates: MessageTemplate[] = [
+      {
+        id: "tpl-1",
+        gymId: "gym-1",
+        type: "Welcome Member",
+        title: "Welcome to Elite Fitness!",
+        bodyText: "Hello {{MemberName}},\n\nWelcome to {{GymName}}! Your registration is complete and your membership plan is {{MembershipPlan}}.\n\nLet's crush your fitness goals together!\n\nBest Regards,\nTeam {{GymName}}",
+        variables: ["MemberName", "GymName", "MembershipPlan"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-2",
+        gymId: "gym-1",
+        type: "Payment Received",
+        title: "Fee Receipt Confirmation",
+        bodyText: "Dear {{MemberName}},\n\nWe have successfully received your payment of {{Amount}} for {{MembershipPlan}} membership plan. Your invoice sequence number is {{InvoiceNumber}}.\n\nThank you for being part of {{GymName}}!",
+        variables: ["MemberName", "Amount", "MembershipPlan", "InvoiceNumber", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-3",
+        gymId: "gym-1",
+        type: "Invoice Generated",
+        title: "New Invoice Available",
+        bodyText: "Hello {{MemberName}},\n\nYour invoice {{InvoiceNumber}} has been successfully generated for plan {{MembershipPlan}} with amount {{Amount}}. The fee payment is due on {{DueDate}}.\n\nClick the link or contact front desk to clear dues.\n\nBest regards,\n{{GymName}}",
+        variables: ["MemberName", "InvoiceNumber", "MembershipPlan", "Amount", "DueDate", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-4",
+        gymId: "gym-1",
+        type: "Membership Renewal",
+        title: "Membership Renewed Successfully",
+        bodyText: "Hello {{MemberName}},\n\nThank you for renewing your subscription at {{GymName}}! Your new {{MembershipPlan}} plan starts immediately and is valid until {{DueDate}}.\n\nKeep up the spectacular work!",
+        variables: ["MemberName", "GymName", "MembershipPlan", "DueDate"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-5",
+        gymId: "gym-1",
+        type: "Membership Expiry",
+        title: "Your Membership Expiry Status",
+        bodyText: "Dear {{MemberName}},\n\nThis is to notify you that your active association subscription profile is set to expire on {{DueDate}}.\n\nRenew today to avoid break in workout status.\n\nTeam {{GymName}}",
+        variables: ["MemberName", "DueDate", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-6",
+        gymId: "gym-1",
+        type: "Fee Due Reminder",
+        title: "Gym Dues Notice",
+        bodyText: "Hello {{MemberName}},\n\nThis is a friendly alert that amount {{Amount}} is pending towards your membership {{MembershipPlan}}. Dues date is {{DueDate}}.\n\nPlease clear it at your earliest convenience.\n\nBest,\n{{GymName}}",
+        variables: ["MemberName", "Amount", "MembershipPlan", "DueDate", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-7",
+        gymId: "gym-1",
+        type: "Birthday Wishes",
+        title: "Happy Birthday from Team!",
+        bodyText: "Happy Birthday {{MemberName}}! 🎂🎉\n\nWishing you a fantastic day ahead filled with joy, happiness, and incredible fitness milestones!\n\nCelebrate your day,\nTeam {{GymName}}",
+        variables: ["MemberName", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-8",
+        gymId: "gym-1",
+        type: "Festival Greetings",
+        title: "Happy Festive Season!",
+        bodyText: "Hello {{MemberName}},\n\nWishing you and your family a very happy and prosperous festival season! Stay active and enjoy the celebrations.\n\nCheers,\nTeam {{GymName}}",
+        variables: ["MemberName", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-9",
+        gymId: "gym-1",
+        type: "Promotional Offer",
+        title: "Exclusive Discount Coupon Inside",
+        bodyText: "Hello {{MemberName}},\n\nBring a friend to workout this month and get 20% off on your next renewal! Grab this deal before it ends.\n\nContact front desk at {{GymName}} for details.",
+        variables: ["MemberName", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-10",
+        gymId: "gym-1",
+        type: "Attendance Reminder",
+        title: "We miss you at the gym!",
+        bodyText: "Hello {{MemberName}},\n\nWe haven't seen you around recently! Regular workouts are the key to long-term accomplishments.\n\nHope to see you back on the gym floor soon!\n\nBest,\nTeam {{GymName}}",
+        variables: ["MemberName", "GymName"],
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: "tpl-11",
+        gymId: "gym-1",
+        type: "Gym Closed Notice",
+        title: "Important Operations Notice",
+        bodyText: "Dear {{MemberName}},\n\nPlease note that {{GymName}} will remain closed on holidays. Regular workouts resume on standard timings from next day.\n\nThank you for understanding,\nManagement",
+        variables: ["MemberName", "GymName"],
+        updatedAt: new Date().toISOString()
+      }
+    ];
+
+    const whatsappSettings: WhatsappSettings[] = [
+      {
+        id: "set-wa-1",
+        gymId: "gym-1",
+        provider: "WhatsAppWeb",
+        apiKey: "DEMO_KEY_XYZ_123",
+        phoneNumberId: "123456789",
+        wabaId: "waba_id_888",
+        status: "Active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    ];
+
+    const communicationLogs: CommunicationLog[] = [];
+    const billingReminders: BillingReminder[] = [];
+    const generatedDocuments: GeneratedDocument[] = [];
+
     return {
       roles,
       permissions,
@@ -1600,7 +1860,12 @@ class CRMDatabase {
       futureCameraAttendance,
       memberProgress: [],
       memberProgressPhotos: [],
-      memberTimeline: []
+      memberTimeline: [],
+      whatsappSettings,
+      messageTemplates,
+      communicationLogs,
+      billingReminders,
+      generatedDocuments
     };
   }
 
@@ -1625,6 +1890,11 @@ class CRMDatabase {
   public getMemberProgress() { if (!this.data.memberProgress) this.data.memberProgress = []; return this.data.memberProgress; }
   public getMemberProgressPhotos() { if (!this.data.memberProgressPhotos) this.data.memberProgressPhotos = []; return this.data.memberProgressPhotos; }
   public getMemberTimeline() { if (!this.data.memberTimeline) this.data.memberTimeline = []; return this.data.memberTimeline; }
+  public getWhatsappSettings() { if (!this.data.whatsappSettings) this.data.whatsappSettings = []; return this.data.whatsappSettings; }
+  public getMessageTemplates() { if (!this.data.messageTemplates) this.data.messageTemplates = []; return this.data.messageTemplates; }
+  public getCommunicationLogs() { if (!this.data.communicationLogs) this.data.communicationLogs = []; return this.data.communicationLogs; }
+  public getBillingReminders() { if (!this.data.billingReminders) this.data.billingReminders = []; return this.data.billingReminders; }
+  public getGeneratedDocuments() { if (!this.data.generatedDocuments) this.data.generatedDocuments = []; return this.data.generatedDocuments; }
 
   public addTimelineEntry(gymId: string, memberId: string, type: string, title: string, description: string): void {
     if (!this.data.memberTimeline) {

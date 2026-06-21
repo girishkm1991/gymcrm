@@ -38,6 +38,11 @@ export class PaymentService {
     type: "Registration Fee" | "Membership Fee" | "Personal Training Fee";
     paymentMode: "Cash" | "UPI" | "Bank" | "Card";
     notes?: string;
+    discount?: number;
+    dueDate?: string;
+    status?: "Paid" | "Pending" | "Overdue";
+    membershipPlan?: string;
+    billingPeriod?: string;
     actor: { id: string; name: string; role: string; ipAddress?: string };
   }): { payment: Payment; invoice: Invoice } {
     // 1. Validations
@@ -54,8 +59,13 @@ export class PaymentService {
     const settings = db.getSettings().find(s => s.gymId === params.gymId);
     const taxRate = settings ? settings.taxPercentage : 11; // fallback to 11%
 
-    const taxAmount = Math.round((params.amount * (taxRate / 100)) * 100) / 100;
-    const totalAmount = params.amount + taxAmount;
+    const baseAmount = params.amount;
+    const discountAmount = params.discount || 0;
+    const baseAfterDiscount = Math.max(0, baseAmount - discountAmount);
+    const taxAmount = Math.round((baseAfterDiscount * (taxRate / 100)) * 100) / 100;
+    const totalAmount = baseAfterDiscount + taxAmount;
+
+    const paymentStatus = params.status || "Paid";
 
     // START ATOMIC BLOCK
     try {
@@ -71,9 +81,9 @@ export class PaymentService {
         amount: totalAmount,
         type: params.type,
         paymentMode: params.paymentMode,
-        status: "Paid",
-        dueDate: null,
-        paymentDate: new Date().toISOString().split("T")[0],
+        status: paymentStatus as any,
+        dueDate: params.dueDate || null,
+        paymentDate: paymentStatus === "Paid" ? new Date().toISOString().split("T")[0] : null,
         createdAt: new Date().toISOString()
       };
 
@@ -85,10 +95,17 @@ export class PaymentService {
         memberId: params.memberId,
         memberName: user.fullName,
         memberEmail: user.email,
-        amount: params.amount,
+        amount: baseAmount,
         taxAmount: taxAmount,
         totalAmount: totalAmount,
         issuedAt: new Date().toISOString(),
+        discount: discountAmount,
+        dueDate: params.dueDate || null,
+        notes: params.notes || null,
+        status: paymentStatus,
+        paymentMode: params.paymentMode,
+        membershipPlan: params.membershipPlan || null,
+        billingPeriod: params.billingPeriod || null
       };
 
       // Push and write atomically

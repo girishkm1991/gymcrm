@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { 
   Plus, Search, Filter, Edit, Eye, X, ArrowLeft, Dumbbell, Activity, ShieldAlert, 
   Check, Trash2, Heart, Calendar, Clock, DollarSign, Camera, CreditCard, 
-  RefreshCw, Printer, AlertTriangle, Shield, Archive, ListTodo, PlusCircle, UserCheck
+  RefreshCw, Printer, AlertTriangle, Shield, Archive, ListTodo, PlusCircle, UserCheck,
+  Layers, MessageSquare, Send, ExternalLink
 } from "lucide-react";
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line 
@@ -26,7 +27,8 @@ type ProfileTab =
   | "PHOTOS" 
   | "MEDICAL" 
   | "TRAINER_NOTES" 
-  | "TIMELINE";
+  | "TIMELINE"
+  | "COMMUNICATION";
 
 export default function MembersView({ user }: MembersViewProps) {
   const [members, setMembers] = useState<Member[]>([]);
@@ -51,6 +53,18 @@ export default function MembersView({ user }: MembersViewProps) {
   const [photosList, setPhotosList] = useState<any[]>([]);
   const [timelineEntries, setTimelineEntries] = useState<any[]>([]);
   const [membershipHistory, setMembershipHistory] = useState<any[]>([]);
+
+  // WhatsApp & Communication state parameters
+  const [comTemplates, setComTemplates] = useState<any[]>([]);
+  const [selectedComTemplate, setSelectedComTemplate] = useState("Fee Due Reminder");
+  const [comVariables, setComVariables] = useState<Record<string, string>>({
+    Amount: "1500",
+    DueDate: new Date().toISOString().split("T")[0],
+    MembershipPlan: "Premium Deluxe Plan"
+  });
+  const [comMessageLogs, setComMessageLogs] = useState<any[]>([]);
+  const [comLoading, setComLoading] = useState(false);
+  const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState<string>("");
 
   // Advanced registration/update inputs
   const [fullName, setFullName] = useState("");
@@ -255,6 +269,16 @@ export default function MembersView({ user }: MembersViewProps) {
       } catch (e) { console.error(e); }
 
       try {
+        const tplRes = await api.get("/whatsapp/templates");
+        setComTemplates(tplRes.data || []);
+      } catch (e) { console.error(e); }
+
+      try {
+        const logRes = await api.get("/communication/logs");
+        setComMessageLogs((logRes.data || []).filter((l: any) => l.memberId === mId));
+      } catch (e) { console.error(e); }
+
+      try {
         const histRes = await api.get(`/memberships/history/${mId}`);
         setMembershipHistory(histRes.data || []);
       } catch (e) { console.error(e); }
@@ -274,6 +298,17 @@ export default function MembersView({ user }: MembersViewProps) {
       setPhotosList(phRes.data || []);
       const tlRes = await api.get(`/members/${mId}/timeline`);
       setTimelineEntries(tlRes.data || []);
+      
+      try {
+        const tplRes = await api.get("/whatsapp/templates");
+        setComTemplates(tplRes.data || []);
+      } catch (e) { console.error(e); }
+
+      try {
+        const logRes = await api.get("/communication/logs");
+        setComMessageLogs((logRes.data || []).filter((l: any) => l.memberId === mId));
+      } catch (e) { console.error(e); }
+
       const histRes = await api.get(`/memberships/history/${mId}`);
       setMembershipHistory(histRes.data || []);
     } catch (e) {
@@ -1520,7 +1555,8 @@ export default function MembersView({ user }: MembersViewProps) {
               { key: "PHOTOS", label: "Comparison Progress Photos" },
               { key: "MEDICAL", label: "Medical Diagnostics" },
               { key: "TRAINER_NOTES", label: "Coach Notes" },
-              { key: "TIMELINE", label: "Event Timeline" }
+              { key: "TIMELINE", label: "Event Timeline" },
+              { key: "COMMUNICATION", label: "WhatsApp & Billing Hub" }
             ] as { key: ProfileTab, label: string }[]).map((tab) => (
               <button
                 key={tab.key}
@@ -2293,6 +2329,249 @@ export default function MembersView({ user }: MembersViewProps) {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* TAB M: WHATSAPP & BILLING HUD CONTROL */}
+            {activeProfileTab === "COMMUNICATION" && (
+              <div className="space-y-6 text-xs text-zinc-300">
+                <div>
+                  <h3 className="text-sm font-black text-white font-mono tracking-widest uppercase border-b border-zinc-800 pb-2">
+                    Commercial Messages & WhatsApp Communication Hub
+                  </h3>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Configure CRM variables, download high-fidelity PDF documents, issue automated receipts and alert subscribers of renewal deadlines directly on WhatsApp.
+                  </p>
+                </div>
+
+                {/* Grid layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Column 1 & 2: Quick actions & Preview */}
+                  <div className="lg:col-span-2 space-y-6">
+                    {/* Panel 1: Document Quick Actions */}
+                    <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-2xl space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-500 font-mono flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-amber-500" /> Member Quick Dispatch Actions
+                      </h4>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `/api/billing/pdf/Invoice/${selectedMember.memberId}?token=${localStorage.getItem("accessToken")}`;
+                            window.open(url, "_blank");
+                          }}
+                          className="p-3 bg-zinc-900 border border-zinc-800 hover:border-amber-500 text-zinc-300 hover:text-white rounded-xl text-left space-y-1.5 transition font-mono cursor-pointer"
+                        >
+                          <span className="text-[9px] text-zinc-500 uppercase block">Invoice File</span>
+                          <span className="font-extrabold text-[11px] block text-amber-500">📄 Send/View Invoice PDF</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `/api/billing/pdf/Receipt/${selectedMember.memberId}?token=${localStorage.getItem("accessToken")}`;
+                            window.open(url, "_blank");
+                          }}
+                          className="p-3 bg-zinc-900 border border-zinc-800 hover:border-amber-500 text-zinc-300 hover:text-white rounded-xl text-left space-y-1.5 transition font-mono cursor-pointer"
+                        >
+                          <span className="text-[9px] text-zinc-500 uppercase block">Receipt File</span>
+                          <span className="font-extrabold text-[11px] block text-amber-500">💵 Send/View Receipt PDF</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `/api/billing/pdf/MembershipCard/${selectedMember.memberId}?token=${localStorage.getItem("accessToken")}`;
+                            window.open(url, "_blank");
+                          }}
+                          className="p-3 bg-zinc-900 border border-zinc-800 hover:border-amber-500 text-zinc-300 hover:text-white rounded-xl text-left space-y-1.5 transition font-mono col-span-2 sm:col-span-1 cursor-pointer"
+                        >
+                          <span className="text-[9px] text-zinc-500 uppercase block">Access Passport</span>
+                          <span className="font-extrabold text-[11px] block text-green-500">🎫 Send/View Passport Card</span>
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-900">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const resp = await api.post("/communication/send", {
+                                memberId: selectedMember.id,
+                                category: "Fee Due Reminder",
+                                variables: {
+                                  Amount: "1500",
+                                  DueDate: selectedMember.endDate || new Date().toISOString().split("T")[0],
+                                  MembershipPlan: selectedMember.planName || "Active Access Plan"
+                                }
+                              });
+                              if (resp.data.whatsappUrl) {
+                                window.open(resp.data.whatsappUrl, "_blank");
+                                reloadProfileSubsets(selectedMember.id);
+                              }
+                            } catch (e) {
+                              alert("Failed to send fee reminder.");
+                            }
+                          }}
+                          className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold rounded-xl text-[10px] uppercase flex items-center gap-1 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Send Reminder Now
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const phone = selectedMember.phone || "";
+                            const clean = phone.replace(/[^0-9]/g, "");
+                            window.open(`https://wa.me/${clean}`, "_blank");
+                          }}
+                          className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-mono font-bold rounded-xl text-[10px] uppercase flex items-center gap-1 cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Open WhatsApp Chat
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Panel 2: Interactive Sandbox Preview */}
+                    <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-2xl space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-500 font-mono flex items-center gap-1.5">
+                        <MessageSquare className="w-4 h-4 text-amber-500" /> Interactive SMS/WhatsApp Template Sandbox
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-3 font-mono text-[11px]">
+                          <div className="space-y-1">
+                            <label className="text-zinc-500 uppercase block">Selected Template Type</label>
+                            <select
+                              value={selectedComTemplate}
+                              onChange={(e) => setSelectedComTemplate(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-800 p-2.5 rounded-xl text-zinc-305 focus:outline-none focus:border-amber-500"
+                            >
+                              <option value="Welcome Member">Welcome Member</option>
+                              <option value="Payment Received">Payment Received</option>
+                              <option value="Invoice Generated">Invoice Generated</option>
+                              <option value="Membership Renewal">Membership Renewal</option>
+                              <option value="Fee Due Reminder">Fee Due Reminder</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-2 pt-2">
+                            <span className="text-[10px] text-zinc-500 uppercase block font-bold">Substitute Dynamic Variables</span>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center gap-2">
+                                <span className="text-zinc-400">Amount USD:</span>
+                                <input
+                                  type="text"
+                                  value={comVariables.Amount || "1500"}
+                                  onChange={(e) => setComVariables(p => ({ ...p, Amount: e.target.value }))}
+                                  className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded w-28 text-white focus:outline-none text-right font-mono"
+                                />
+                              </div>
+
+                              <div className="flex justify-between items-center gap-2">
+                                <span className="text-zinc-400">Deadline Due:</span>
+                                <input
+                                  type="text"
+                                  value={comVariables.DueDate || ""}
+                                  onChange={(e) => setComVariables(p => ({ ...p, DueDate: e.target.value }))}
+                                  className="bg-zinc-900 border border-zinc-805 px-2 py-1 rounded w-28 text-white focus:outline-none text-right font-mono"
+                                />
+                              </div>
+
+                              <div className="flex justify-between items-center gap-2">
+                                <span className="text-zinc-400">Access Plan:</span>
+                                <input
+                                  type="text"
+                                  value={comVariables.MembershipPlan || ""}
+                                  onChange={(e) => setComVariables(p => ({ ...p, MembershipPlan: e.target.value }))}
+                                  className="bg-zinc-900 border border-zinc-810 px-2 py-1 rounded w-28 text-white focus:outline-none text-right font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const resp = await api.post("/communication/send", {
+                                  memberId: selectedMember.id,
+                                  category: selectedComTemplate,
+                                  variables: comVariables
+                                });
+                                if (resp.data.whatsappUrl) {
+                                  window.open(resp.data.whatsappUrl, "_blank");
+                                  reloadProfileSubsets(selectedMember.id);
+                                }
+                              } catch (e) {
+                                alert("Error dispatching sandbox message.");
+                              }
+                            }}
+                            className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-[10px] uppercase rounded-xl flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Send className="w-3.5 h-3.5" /> Dispatch Simulated Template
+                          </button>
+                        </div>
+
+                        {/* Visual Smartphone Preview Bubble */}
+                        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-3xl flex flex-col justify-between h-56 relative overflow-hidden font-sans">
+                          {/* Top mini Status Bar */}
+                          <div className="flex justify-between text-[8px] text-zinc-500 tracking-wider font-mono shrink-0">
+                            <span>WhatsApp Platform</span>
+                            <span>• Secure Connection</span>
+                          </div>
+
+                          {/* Chat bubble body container */}
+                          <div className="flex-1 overflow-y-auto py-2 flex items-end">
+                            <div className="bg-emerald-500/10 border border-emerald-500/10 text-[11px] text-zinc-300 rounded-2xl rounded-bl-none p-3 max-w-[90%] leading-relaxed">
+                              <span className="text-[9px] text-emerald-400 font-mono uppercase block font-bold mb-1">Incoming Message Preview</span>
+                              {comTemplates.find(t => t.type === selectedComTemplate) ? (
+                                comTemplates.find(t => t.type === selectedComTemplate).bodyText
+                                  .replace(/\{\{MemberName\}\}/g, selectedMember.fullName)
+                                  .replace(/\{\{GymName\}\}/g, "Elite Fitness Gym")
+                                  .replace(/\{\{Amount\}\}/g, comVariables.Amount || "1500")
+                                  .replace(/\{\{DueDate\}\}/g, comVariables.DueDate || "Today")
+                                  .replace(/\{\{MembershipPlan\}\}/g, comVariables.MembershipPlan || "Assigned Access Pack")
+                              ) : (
+                                `Hello ${selectedMember.fullName || "User"},\n\nUpdate regarding your account at Elite Fitness Gym.\n\nBest Regards.`
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Mobile visual drawer anchor */}
+                          <div className="w-16 h-1 bg-zinc-800 rounded-full mx-auto mt-1 shrink-0"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 3: Historical communication logs lists */}
+                  <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-2xl space-y-4 lg:col-span-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-500 font-mono border-b border-zinc-900 pb-2 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-500" /> Historic message logs
+                    </h4>
+
+                    {comMessageLogs.length === 0 ? (
+                      <div className="text-center py-10 text-zinc-500 font-mono text-[10px]">
+                        No dispatch operations logged.
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                        {comMessageLogs.map((log) => (
+                          <div key={log.id} className="p-3 bg-zinc-900 border border-zinc-855 rounded-xl space-y-1">
+                            <div className="flex justify-between items-center text-[9px] font-mono">
+                              <span className="text-zinc-500">{log.sentAt?.replace("T", " ")?.split(".")[0]}</span>
+                              <span className="bg-emerald-500/10 text-emerald-400 px-1 py-0.5 rounded font-black uppercase">Sent</span>
+                            </div>
+                            <div className="text-[10px] font-bold text-amber-500 font-mono">{log.category}</div>
+                            <p className="text-zinc-400 text-[10.5px] leading-relaxed font-sans">{log.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

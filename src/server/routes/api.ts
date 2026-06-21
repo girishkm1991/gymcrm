@@ -65,7 +65,7 @@ function validateQrToken(token: string): { memberId: string; gymId: string } | n
   return null;
 }
 
-import { db, User, MemberProfile, MembershipPlan, Payment, Invoice, Attendance, WorkoutPlan, DietPlan, Notification, Gym } from "../database/database";
+import { db, User, MemberProfile, MembershipPlan, Payment, Invoice, Attendance, WorkoutPlan, DietPlan, Notification, Gym, WhatsappSettings, MessageTemplate, CommunicationLog, BillingReminder, GeneratedDocument } from "../database/database";
 import { AuthService } from "../services/auth.service";
 import { authenticate, authorize, requirePermission } from "../middleware/auth";
 import { MembershipService } from "../services/membership.service";
@@ -75,6 +75,7 @@ import { NotificationService } from "../services/notification.service";
 import { SettingsService } from "../services/settings.service";
 import { CameraAttendanceService } from "../services/camera.service";
 import { AuditService } from "../services/audit.service";
+import { CommunicationService } from "../services/communication.service";
 
 const router = Router();
 
@@ -1721,6 +1722,289 @@ router.get("/payments/list", authenticate, (req: Request, res: Response) => {
   const user = (req as any).user;
   const payments = db.getPayments().filter(p => p.gymId === user.gymId);
   res.json(payments);
+});
+
+// ==========================================
+// 14B. WHATSAPP & AUTO-BILLING ENDPOINTS
+// ==========================================
+router.get("/whatsapp/settings", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  let configs = db.getWhatsappSettings().filter(c => c.gymId === gymId);
+  if (configs.length === 0) {
+    const dummy: WhatsappSettings = {
+      id: "set-wa-" + Math.floor(100000 + Math.random() * 900000),
+      gymId,
+      provider: "WhatsAppWeb",
+      apiKey: "DEMO_KEY_XYZ_123",
+      phoneNumberId: "+15551234567",
+      wabaId: "waba-001",
+      status: "Active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    db.getWhatsappSettings().push(dummy);
+    db.save();
+    configs = [dummy];
+  }
+  res.json(configs[0]);
+});
+
+router.put("/whatsapp/settings", authenticate, authorize(["GYM_OWNER"]), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { provider, apiKey, phoneNumberId, wabaId, status } = req.body;
+  
+  let config = db.getWhatsappSettings().find(c => c.gymId === gymId);
+  if (!config) {
+    config = {
+      id: "set-wa-" + Math.floor(100000 + Math.random() * 900000),
+      gymId,
+      provider: provider || "WhatsAppWeb",
+      apiKey: apiKey || "",
+      phoneNumberId: phoneNumberId || "",
+      wabaId: wabaId || "",
+      status: status || "Inactive",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    db.getWhatsappSettings().push(config);
+  } else {
+    if (provider) config.provider = provider;
+    config.apiKey = apiKey !== undefined ? apiKey : config.apiKey;
+    config.phoneNumberId = phoneNumberId !== undefined ? phoneNumberId : config.phoneNumberId;
+    config.wabaId = wabaId !== undefined ? wabaId : config.wabaId;
+    if (status) config.status = status;
+    config.updatedAt = new Date().toISOString();
+  }
+  db.save();
+  res.json(config);
+});
+
+router.get("/whatsapp/templates", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const templates = db.getMessageTemplates().filter(t => t.gymId === gymId);
+  res.json(templates);
+});
+
+router.put("/whatsapp/templates/:type", authenticate, authorize(["GYM_OWNER"]), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { title, bodyText, variables } = req.body;
+  if (!title || !bodyText) {
+    return res.status(400).json({ error: "Title and bodyText are required." });
+  }
+  let template = db.getMessageTemplates().find(t => t.gymId === gymId && t.type === req.params.type);
+  if (!template) {
+    template = {
+      id: "tpl-" + Math.floor(100000 + Math.random() * 900000),
+      gymId,
+      type: req.params.type,
+      title,
+      bodyText,
+      variables: variables || ["MemberName", "GymName"],
+      updatedAt: new Date().toISOString()
+    };
+    db.getMessageTemplates().push(template);
+  } else {
+    template.title = title;
+    template.bodyText = bodyText;
+    if (variables) template.variables = variables;
+    template.updatedAt = new Date().toISOString();
+  }
+  db.save();
+  res.json(template);
+});
+
+router.get("/billing/reminders", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const reminders = CommunicationService.generateActiveReminders(gymId);
+  res.json(reminders);
+});
+
+router.delete("/billing/reminders/:id", authenticate, (req: Request, res: Response) => {
+  const reminders = db.getBillingReminders();
+  const index = reminders.findIndex(r => r.id === req.params.id);
+  if (index !== -1) {
+    reminders[index].status = "Dismissed";
+    db.save();
+    return res.json({ success: true, message: "Reminder dismissed successfully." });
+  }
+  res.status(404).json({ error: "Reminder not found." });
+});
+
+router.get("/billing/pdf/:type/:id", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { type, id } = req.params;
+
+  if (type !== "Invoice" && type !== "Receipt" && type !== "MembershipCard") {
+    return res.status(400).json({ error: "Invalid document type." });
+  }
+
+  let doc = db.getGeneratedDocuments().find(d => d.gymId === gymId && d.type === type && (d.referenceId === id || d.memberId === id));
+  if (!doc) {
+    let targetMemberId = id;
+    if (type === "Invoice") {
+      const inv = db.getInvoices().find(i => i.invoiceNo === id || i.id === id);
+      if (inv) targetMemberId = inv.memberId;
+    } else if (type === "Receipt") {
+      const pm = db.getPayments().find(p => p.id === id);
+      if (pm) targetMemberId = pm.memberId;
+    }
+    
+    doc = CommunicationService.generateDocument({
+      gymId,
+      memberId: targetMemberId,
+      type,
+      referenceId: id
+    });
+  }
+
+  if (fs.existsSync(doc.filePath)) {
+    res.setHeader("Content-Type", "text/html");
+    res.send(fs.readFileSync(doc.filePath, "utf-8"));
+  } else {
+    const regenerated = CommunicationService.generateDocument({
+      gymId,
+      memberId: doc.memberId,
+      type,
+      referenceId: doc.referenceId
+    });
+    res.setHeader("Content-Type", "text/html");
+    res.send(fs.readFileSync(regenerated.filePath, "utf-8"));
+  }
+});
+
+router.get("/communication/logs", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const logs = db.getCommunicationLogs().filter(l => l.gymId === gymId);
+  res.json(logs);
+});
+
+router.post("/communication/send", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { memberId, type, category, variables } = req.body;
+
+  if (!memberId || !category) {
+    return res.status(400).json({ error: "Required fields: memberId, category" });
+  }
+
+  const memberUser = db.getUsers().find(u => u.id === memberId);
+  if (!memberUser) {
+    return res.status(404).json({ error: "Member not found." });
+  }
+
+  const memberProfile = db.getMembers().find(m => m.id === memberId);
+  if (!memberProfile) {
+    return res.status(404).json({ error: "Member profile card not found." });
+  }
+
+  const template = db.getMessageTemplates().find(t => t.gymId === gymId && t.type === category);
+  const bodyText = template ? template.bodyText : `Hello {{MemberName}},\n\nUpdate regarding your gym membership at {{GymName}}.\n\nBest Regards.`;
+
+  const gymSettings = db.getSettings().find(s => s.gymId === gymId);
+  const gymObj = db.getGyms().find(g => g.id === gymId);
+  const gymName = gymSettings?.gymName || gymObj?.name || "GymFlow Club";
+
+  const parsedMsg = CommunicationService.parseTemplate(bodyText, {
+    MemberName: memberUser.fullName,
+    GymName: gymName,
+    ...variables
+  });
+
+  const logId = "log-" + Math.floor(100000 + Math.random() * 900000);
+  const newLog: CommunicationLog = {
+    id: logId,
+    gymId,
+    memberId,
+    memberName: memberUser.fullName,
+    type: "WhatsApp",
+    category,
+    message: parsedMsg,
+    status: "Sent",
+    sentAt: new Date().toISOString()
+  };
+
+  db.getCommunicationLogs().push(newLog);
+  db.addTimelineEntry(gymId, memberId, "Timeline", "Message Sent (" + category + ")", parsedMsg.substring(0, 80) + "...");
+  db.save();
+
+  const phone = memberUser.phone || "";
+  const cleanedPhone = phone.replace(/[^0-9]/g, "");
+  const whatsappUrl = `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(parsedMsg)}`;
+
+  res.json({
+    success: true,
+    message: parsedMsg,
+    whatsappUrl,
+    log: newLog
+  });
+});
+
+router.post("/billing/bulk", authenticate, authorize(["GYM_OWNER"]), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { memberIds, action, type, amount, paymentMode, membershipPlan } = req.body;
+
+  if (!memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+    return res.status(400).json({ error: "Required array: memberIds" });
+  }
+
+  const results: any[] = [];
+  const actor = { id: user.userId, name: user.email, role: user.role };
+
+  for (const id of memberIds) {
+    try {
+      if (action === "INVOICE") {
+        const amt = Number(amount) || 1200;
+        const transaction = PaymentService.collectFee({
+          gymId,
+          memberId: id,
+          amount: amt,
+          type: type || "Membership Fee",
+          paymentMode: paymentMode || "Cash",
+          membershipPlan: membershipPlan || "Standard Bulk Renewal",
+          actor
+        });
+        results.push({ memberId: id, success: true, invoiceNo: transaction.invoice.invoiceNo });
+      } else if (action === "REMINDER") {
+        const memberUser = db.getUsers().find(u => u.id === id);
+        if (!memberUser) continue;
+        const template = db.getMessageTemplates().find(t => t.gymId === gymId && t.type === "Fee Due Reminder");
+        const bodyText = template?.bodyText || "Hi {{MemberName}},\n\nFriendly reminder regarding dues at {{GymName}}.";
+        const msg = CommunicationService.parseTemplate(bodyText, {
+          MemberName: memberUser.fullName,
+          GymName: "Elite Fitness Gym",
+          Amount: String(amount || 1200),
+          DueDate: new Date().toISOString().split("T")[0]
+        });
+
+        const newLog: CommunicationLog = {
+          id: "log-" + Math.floor(100000 + Math.random() * 900000),
+          gymId,
+          memberId: id,
+          memberName: memberUser.fullName,
+          type: "WhatsApp",
+          category: "Fee Due Reminder",
+          message: msg,
+          status: "Sent",
+          sentAt: new Date().toISOString()
+        };
+        db.getCommunicationLogs().push(newLog);
+        results.push({ memberId: id, success: true, message: "Reminder registered in billing timeline." });
+      }
+    } catch (err: any) {
+      results.push({ memberId: id, success: false, error: err.message });
+    }
+  }
+
+  db.save();
+  res.json({ success: true, results });
 });
 
 // ==========================================

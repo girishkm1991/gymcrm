@@ -403,6 +403,86 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
           createdAt VARCHAR(100)
         );
       `
+    },
+    {
+      name: "whatsapp_settings",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS whatsapp_settings (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          provider VARCHAR(100) NOT NULL,
+          apiKey TEXT,
+          phoneNumberId VARCHAR(255),
+          wabaId VARCHAR(255),
+          status VARCHAR(100) DEFAULT 'Inactive',
+          createdAt VARCHAR(100),
+          updatedAt VARCHAR(100)
+        );
+      `
+    },
+    {
+      name: "message_templates",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS message_templates (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          type VARCHAR(100) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          bodyText TEXT NOT NULL,
+          variables TEXT,
+          updatedAt VARCHAR(100),
+          UNIQUE KEY uniq_gym_template (gymId, type)
+        );
+      `
+    },
+    {
+      name: "communication_logs",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS communication_logs (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          memberId VARCHAR(255) NOT NULL,
+          memberName VARCHAR(255) NOT NULL,
+          type VARCHAR(100) NOT NULL,
+          category VARCHAR(100) NOT NULL,
+          message TEXT NOT NULL,
+          status VARCHAR(100) NOT NULL,
+          sentAt VARCHAR(100) NOT NULL
+        );
+      `
+    },
+    {
+      name: "billing_reminders",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS billing_reminders (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          memberId VARCHAR(255) NOT NULL,
+          memberName VARCHAR(255) NOT NULL,
+          planName VARCHAR(255) NOT NULL,
+          amount DOUBLE DEFAULT 0.0,
+          type VARCHAR(100) NOT NULL,
+          status VARCHAR(100) NOT NULL,
+          dueDate VARCHAR(100) NOT NULL,
+          daysRemaining INT DEFAULT 0,
+          createdAt VARCHAR(100) NOT NULL
+        );
+      `
+    },
+    {
+      name: "generated_documents",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS generated_documents (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          memberId VARCHAR(255) NOT NULL,
+          type VARCHAR(100) NOT NULL,
+          referenceId VARCHAR(255) NOT NULL,
+          filePath TEXT NOT NULL,
+          fileSize INT DEFAULT 0,
+          createdAt VARCHAR(100) NOT NULL
+        );
+      `
     }
   ];
 
@@ -442,7 +522,30 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
         await connection.query(col.ddl);
       }
     } catch (err: any) {
-      log(`Column addition failed for ${col.name}: ${err.message}`);
+      log(`Column addition failed for members.${col.name}: ${err.message}`);
+    }
+  }
+
+  // Ensure invoices table has columns for professional invoicing
+  const invoiceColsToEnsure = [
+    { name: "discount", ddl: "ALTER TABLE invoices ADD COLUMN discount DOUBLE DEFAULT 0.0" },
+    { name: "dueDate", ddl: "ALTER TABLE invoices ADD COLUMN dueDate VARCHAR(100) NULL" },
+    { name: "notes", ddl: "ALTER TABLE invoices ADD COLUMN notes TEXT NULL" },
+    { name: "status", ddl: "ALTER TABLE invoices ADD COLUMN status VARCHAR(100) NULL" },
+    { name: "paymentMode", ddl: "ALTER TABLE invoices ADD COLUMN paymentMode VARCHAR(100) NULL" },
+    { name: "membershipPlan", ddl: "ALTER TABLE invoices ADD COLUMN membershipPlan VARCHAR(255) NULL" },
+    { name: "billingPeriod", ddl: "ALTER TABLE invoices ADD COLUMN billingPeriod VARCHAR(255) NULL" }
+  ];
+
+  for (const col of invoiceColsToEnsure) {
+    try {
+      const [cols]: any = await connection.query(`SHOW COLUMNS FROM invoices LIKE '${col.name}'`);
+      if (cols.length === 0) {
+        log(`Altering invoices table to add missing column ${col.name}...`);
+        await connection.query(col.ddl);
+      }
+    } catch (err: any) {
+      log(`Column addition failed for invoices.${col.name}: ${err.message}`);
     }
   }
 
