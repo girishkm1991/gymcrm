@@ -40,3 +40,34 @@ export function authorize(allowedRoles: ("SUPER_ADMIN" | "GYM_OWNER" | "TRAINER"
     next();
   };
 }
+
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
+  SUPER_ADMIN: ["MANAGE_MEMBERS", "MANAGE_PAYMENTS", "MANAGE_STAFF", "VIEW_REPORTS", "MANAGE_PLANS", "MANAGE_SETTINGS"],
+  GYM_OWNER: ["MANAGE_MEMBERS", "MANAGE_PAYMENTS", "MANAGE_STAFF", "VIEW_REPORTS", "MANAGE_PLANS", "MANAGE_SETTINGS"],
+  RECEPTIONIST: ["MANAGE_MEMBERS", "MANAGE_PAYMENTS", "VIEW_REPORTS"],
+  TRAINER: ["MANAGE_MEMBERS"],
+  MEMBER: []
+};
+
+// Middleware to authorize specific permissions
+export function requirePermission(requiredPermission: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user as TokenPayload;
+    if (!user) {
+      return res.status(401).json({ error: "Unauthorized. Please sign in." });
+    }
+
+    if (user.role === "SUPER_ADMIN") {
+      return next();
+    }
+
+    const permissions = ROLE_PERMISSIONS[user.role] || [];
+    if (!permissions.includes(requiredPermission)) {
+      return res.status(403).json({
+        error: `Access denied. Permission '${requiredPermission}' is required.`
+      });
+    }
+
+    next();
+  };
+}

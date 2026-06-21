@@ -12,8 +12,8 @@ export interface TokenPayload {
 }
 
 export class AuthService {
-  // Sign a JWT-compatible token using Node.js built-in crypto (HmacSHA256)
-  public static generateToken(user: User): string {
+  // Sign a JWT-compatible access token with custom expire ms duration (defaults to 15 mins)
+  public static generateAccessToken(user: User): string {
     const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
     
     const payload: TokenPayload = {
@@ -21,14 +21,35 @@ export class AuthService {
       email: user.email,
       role: user.role,
       gymId: user.gymId,
-      exp: Date.now() + 24 * 60 * 60 * 1000, // 24 Hours
+      exp: Date.now() + 15 * 60 * 1000, // 15 Minutes
     };
     
     const payloadEncoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
     
-    // Create Hmac signature
     const signature = crypto
       .createHmac("sha256", JWT_SECRET)
+      .update(`${header}.${payloadEncoded}`)
+      .digest("base64url");
+      
+    return `${header}.${payloadEncoded}.${signature}`;
+  }
+
+  // Sign a JWT-compatible refresh token (7 days)
+  public static generateRefreshToken(user: User): string {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT-REFRESH" })).toString("base64url");
+    
+    const payload: TokenPayload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      gymId: user.gymId,
+      exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 Days
+    };
+    
+    const payloadEncoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    
+    const signature = crypto
+      .createHmac("sha256", JWT_SECRET + "-refresh-signing-salt")
       .update(`${header}.${payloadEncoded}`)
       .digest("base64url");
       
@@ -43,7 +64,6 @@ export class AuthService {
       
       const [header, payloadEncoded, signature] = parts;
       
-      // Re-sign to verify integrity
       const expectedSignature = crypto
         .createHmac("sha256", JWT_SECRET)
         .update(`${header}.${payloadEncoded}`)
@@ -57,7 +77,6 @@ export class AuthService {
         Buffer.from(payloadEncoded, "base64url").toString("utf8")
       );
       
-      // Check expiration
       if (payload.exp < Date.now()) {
         return null; // Expired
       }
@@ -66,5 +85,41 @@ export class AuthService {
     } catch (err) {
       return null;
     }
+  }
+
+  // Verify and decode a Refresh token
+  public static verifyRefreshToken(token: string): TokenPayload | null {
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return null;
+      
+      const [header, payloadEncoded, signature] = parts;
+      
+      const expectedSignature = crypto
+        .createHmac("sha256", JWT_SECRET + "-refresh-signing-salt")
+        .update(`${header}.${payloadEncoded}`)
+        .digest("base64url");
+        
+      if (signature !== expectedSignature) {
+        return null;
+      }
+      
+      const payload: TokenPayload = JSON.parse(
+        Buffer.from(payloadEncoded, "base64url").toString("utf8")
+      );
+      
+      if (payload.exp < Date.now()) {
+        return null; // Expired
+      }
+      
+      return payload;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Legacy fallback token for seamless backward path compatibility
+  public static generateToken(user: User): string {
+    return this.generateAccessToken(user);
   }
 }

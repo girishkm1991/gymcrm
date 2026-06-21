@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 
 // Define DB paths
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -168,19 +169,85 @@ export interface FutureCameraAttendance {
   deviceStatus: string;
 }
 
+export interface Permission {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface MemberMembership {
+  id: string;
+  gymId: string;
+  memberId: string; // references User.id
+  planId: string; // references MembershipPlan.id
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: "Active" | "Expired" | "Frozen" | "Cancelled";
+  pricePaid: number;
+  freezeDate?: string;
+  cancelDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Expense {
+  id: string;
+  gymId: string;
+  category: "Rent" | "Salary" | "Electricity" | "Water" | "Equipment" | "Maintenance" | "Marketing" | "Miscellaneous";
+  amount: number;
+  date: string; // YYYY-MM-DD
+  description: string;
+  createdAt: string;
+}
+
+export interface Settings {
+  id: string;
+  gymId: string;
+  gymName: string;
+  logo: string;
+  address: string;
+  phone: string;
+  email: string;
+  gstNumber: string;
+  currency: string;
+  workingHours: string;
+  receiptFooter: string;
+  paymentQr: string;
+  taxPercentage: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  gymId: string | null;
+  userId: string;
+  userName: string;
+  userRole: string;
+  action: string;
+  details: string;
+  ipAddress: string;
+  createdAt: string;
+}
+
 // Entire Database Structure
 export interface DatabaseStructure {
   roles: Role[];
+  permissions: Permission[];
   gyms: Gym[];
   users: User[];
   members: MemberProfile[];
   membershipPlans: MembershipPlan[];
+  memberMemberships: MemberMembership[];
   payments: Payment[];
   invoices: Invoice[];
   attendance: Attendance[];
   workoutPlans: WorkoutPlan[];
   dietPlans: DietPlan[];
   notifications: Notification[];
+  expenses: Expense[];
+  settings: Settings[];
+  auditLogs: AuditLog[];
   futureCameraAttendance: FutureCameraAttendance[];
 }
 
@@ -202,14 +269,33 @@ class CRMDatabase {
 
   // Helper: Hash password
   public hashPassword(Password: string, Salt: string): string {
+    if (Password.startsWith("$2a$") || Password.startsWith("$2b$")) {
+      return Password;
+    }
     return crypto.pbkdf2Sync(Password, Salt, 1000, 64, "sha512").toString("hex");
   }
 
-  // Helper: Create new Salt and Hash
+  // Helper: Verify password using bcrypt or pbkdf2
+  public verifyPassword(plain: string, hash: string, salt?: string): boolean {
+    if (hash.startsWith("$2a$") || hash.startsWith("$2b$")) {
+      try {
+        return bcrypt.compareSync(plain, hash);
+      } catch (err) {
+        return false;
+      }
+    }
+    if (salt) {
+      const calculated = crypto.pbkdf2Sync(plain, salt, 1000, 64, "sha512").toString("hex");
+      return calculated === hash;
+    }
+    return false;
+  }
+
+  // Helper: Create new Salt and Hash using bcryptjs
   public createCredentials(Password: string) {
-    const Salt = crypto.randomBytes(16).toString("hex");
-    const Hash = this.hashPassword(Password, Salt);
-    return { salt: Salt, hash: Hash };
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(Password, salt);
+    return { salt, hash };
   }
 
   // Load database from file or create dynamic seed data
@@ -219,7 +305,17 @@ class CRMDatabase {
     if (fs.existsSync(dbPath)) {
       try {
         const fileContent = fs.readFileSync(dbPath, "utf-8");
-        return JSON.parse(fileContent);
+        const parsed = JSON.parse(fileContent) as any;
+        
+        // Relational Upgrade schemas backfill
+        const seeded = this.generateSeedData();
+        if (!parsed.permissions) parsed.permissions = seeded.permissions;
+        if (!parsed.memberMemberships) parsed.memberMemberships = seeded.memberMemberships;
+        if (!parsed.expenses) parsed.expenses = seeded.expenses;
+        if (!parsed.settings) parsed.settings = seeded.settings;
+        if (!parsed.auditLogs) parsed.auditLogs = seeded.auditLogs;
+        
+        return parsed as DatabaseStructure;
       } catch (err) {
         console.error("Failed to parse database file. Re-seeding database.", err);
       }
@@ -888,34 +984,176 @@ class CRMDatabase {
       }
     ];
 
+    const permissions: Permission[] = [
+      { id: "perm-1", name: "MANAGE_MEMBERS", description: "Create, view, update, delete members" },
+      { id: "perm-2", name: "MANAGE_PAYMENTS", description: "Collect payments, void payments, issue invoices" },
+      { id: "perm-3", name: "MANAGE_STAFF", description: "Invite, update staff accounts" },
+      { id: "perm-4", name: "VIEW_REPORTS", description: "View analytics, and download reports" },
+      { id: "perm-5", name: "MANAGE_PLANS", description: "Configure membership pricing and plans" },
+      { id: "perm-6", name: "MANAGE_SETTINGS", description: "Modify gym profile and receipt branding" }
+    ];
+
+    const memberMemberships: MemberMembership[] = [
+      {
+        id: "msh-1",
+        gymId: "gym-1",
+        memberId: "usr-member-1",
+        planId: "plan-yearly",
+        startDate: "2026-02-01",
+        endDate: "2027-02-01",
+        status: "Active",
+        pricePaid: 399.99,
+        createdAt: "2026-02-01T10:05:00Z",
+        updatedAt: "2026-02-01T10:05:00Z"
+      },
+      {
+        id: "msh-2",
+        gymId: "gym-1",
+        memberId: "usr-member-2",
+        planId: "plan-monthly",
+        startDate: "2026-06-01",
+        endDate: "2026-07-01",
+        status: "Active",
+        pricePaid: 49.99,
+        createdAt: "2026-06-01T14:45:00Z",
+        updatedAt: "2026-06-01T14:45:00Z"
+      },
+      {
+        id: "msh-3",
+        gymId: "gym-1",
+        memberId: "usr-member-3",
+        planId: "plan-yearly",
+        startDate: "2026-03-01",
+        endDate: "2027-03-01",
+        status: "Active",
+        pricePaid: 399.99,
+        createdAt: "2026-03-01T08:10:00Z",
+        updatedAt: "2026-03-01T08:10:00Z"
+      },
+      {
+        id: "msh-4",
+        gymId: "gym-1",
+        memberId: "usr-member-4",
+        planId: "plan-monthly",
+        startDate: "2026-03-15",
+        endDate: "2026-04-15",
+        status: "Expired",
+        pricePaid: 49.99,
+        createdAt: "2026-03-15T18:00:00Z",
+        updatedAt: "2026-04-15T00:00:00Z"
+      }
+    ];
+
+    const expenses: Expense[] = [
+      { id: "exp-1", gymId: "gym-1", category: "Rent", amount: 1200, date: "2026-06-01", description: "Monthly facility lease payment", createdAt: "2026-06-01T09:00:00Z" },
+      { id: "exp-2", gymId: "gym-1", category: "Salary", amount: 1500, date: "2026-06-05", description: "Staff payroll (Zara, receptionist, Connor)", createdAt: "2026-06-05T18:00:00Z" },
+      { id: "exp-3", gymId: "gym-1", category: "Electricity", amount: 280, date: "2026-06-10", description: "AC power bill", createdAt: "2026-06-10T10:00:00Z" },
+      { id: "exp-4", gymId: "gym-1", category: "Water", amount: 45, date: "2026-06-10", description: "Showers utility bill", createdAt: "2026-06-10T10:15:00Z" },
+      { id: "exp-5", gymId: "gym-1", category: "Equipment", amount: 450, date: "2026-06-12", description: "New 20kg lifting Olympic plates", createdAt: "2026-06-12T14:30:00Z" },
+      { id: "exp-6", gymId: "gym-1", category: "Maintenance", amount: 120, date: "2026-06-15", description: "Cable crossover pulley lubrication", createdAt: "2026-06-15T11:00:00Z" },
+      { id: "exp-7", gymId: "gym-1", category: "Marketing", amount: 150, date: "2026-06-18", description: "Instagram geo-targeted flyers promotion", createdAt: "2026-06-18T16:00:00Z" }
+    ];
+
+    const settings: Settings[] = [
+      {
+        id: "set-1",
+        gymId: "gym-1",
+        gymName: "Elite Fitness Club",
+        logo: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=64&auto=format&fit=crop",
+        address: "404 Powerhouse Boulevard, Metro City",
+        phone: "+1-650-555-0199",
+        email: "contact@elitefitness.com",
+        gstNumber: "GST-29AAAAA0000A1Z5",
+        currency: "USD",
+        workingHours: "06:00 AM - 10:00 PM",
+        receiptFooter: "Thank you for training with Elite Fitness Club. Eat clean, lift heavy!",
+        paymentQr: "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=elitefitness@upi&pn=Elite%20Fitness",
+        taxPercentage: 11,
+        createdAt: "2026-01-15T09:00:00Z",
+        updatedAt: "2026-01-15T09:00:00Z"
+      },
+      {
+        id: "set-2",
+        gymId: "gym-2",
+        gymName: "Iron Dungeon Gym",
+        logo: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=64&auto=format&fit=crop",
+        address: "88 Barbell Alley, Industrial Zone",
+        phone: "+1-650-555-0201",
+        email: "support@irondungeon.com",
+        gstNumber: "GST-29BBBBB1111B2Z6",
+        currency: "USD",
+        workingHours: "05:00 AM - 11:00 PM",
+        receiptFooter: "Iron Sharpens Iron. Welcome to the Dungeon.",
+        paymentQr: "",
+        taxPercentage: 8,
+        createdAt: "2026-03-10T11:00:00Z",
+        updatedAt: "2026-03-10T11:00:00Z"
+      }
+    ];
+
+    const auditLogs: AuditLog[] = [
+      {
+        id: "log-1",
+        gymId: "gym-1",
+        userId: "usr-owner-1",
+        userName: "Marcus Aurelius Strength",
+        userRole: "GYM_OWNER",
+        action: "Member Created",
+        details: "Registered new member Chris Hemsworth",
+        ipAddress: "127.0.0.1",
+        createdAt: "2026-02-01T10:00:00Z"
+      },
+      {
+        id: "log-2",
+        gymId: "gym-1",
+        userId: "usr-receptionist-1",
+        userName: "Sarah Connor",
+        userRole: "RECEPTIONIST",
+        action: "Payment Received",
+        details: "Collected $399.99 for Chris Hemsworth Annual Plan",
+        ipAddress: "192.168.1.15",
+        createdAt: "2026-02-01T10:05:00Z"
+      }
+    ];
+
     return {
       roles,
+      permissions,
       gyms,
       users,
       members,
       membershipPlans,
+      memberMemberships,
       payments,
       invoices,
       attendance,
       workoutPlans,
       dietPlans,
       notifications,
+      expenses,
+      settings,
+      auditLogs,
       futureCameraAttendance,
     };
   }
 
   // Get data tables
   public getRoles() { return this.data.roles; }
+  public getPermissions() { return this.data.permissions || []; }
   public getGyms() { return this.data.gyms; }
   public getUsers() { return this.data.users; }
   public getMembers() { return this.data.members; }
   public getMembershipPlans() { return this.data.membershipPlans; }
+  public getMemberMemberships() { return this.data.memberMemberships || []; }
   public getPayments() { return this.data.payments; }
   public getInvoices() { return this.data.invoices; }
   public getAttendance() { return this.data.attendance; }
   public getWorkoutPlans() { return this.data.workoutPlans; }
   public getDietPlans() { return this.data.dietPlans; }
   public getNotifications() { return this.data.notifications; }
+  public getExpenses() { return this.data.expenses || []; }
+  public getSettings() { return this.data.settings || []; }
+  public getAuditLogs() { return this.data.auditLogs || []; }
   public getFutureCameraAttendance() { return this.data.futureCameraAttendance; }
 }
 

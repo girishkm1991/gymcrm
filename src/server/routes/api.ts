@@ -1,7 +1,14 @@
 import { Router, Request, Response } from "express";
 import { db, User, MemberProfile, MembershipPlan, Payment, Invoice, Attendance, WorkoutPlan, DietPlan, Notification, Gym } from "../database/database";
 import { AuthService } from "../services/auth.service";
-import { authenticate, authorize } from "../middleware/auth";
+import { authenticate, authorize, requirePermission } from "../middleware/auth";
+import { MembershipService } from "../services/membership.service";
+import { PaymentService } from "../services/payment.service";
+import { ExpenseService } from "../services/expense.service";
+import { NotificationService } from "../services/notification.service";
+import { SettingsService } from "../services/settings.service";
+import { CameraAttendanceService } from "../services/camera.service";
+import { AuditService } from "../services/audit.service";
 
 const router = Router();
 
@@ -9,7 +16,7 @@ const router = Router();
 // 1. AUTHENTICATION MODULE
 // ==========================================
 
-// SECURE LOGIN
+// SECURE LOGIN WITH DUAL TOKENS (ACCESS + REFRESH)
 router.post("/auth/login", (req: Request, res: Response) => {
   const { email, password } = req.body;
 
@@ -24,9 +31,9 @@ router.post("/auth/login", (req: Request, res: Response) => {
     return res.status(401).json({ error: "Invalid email or password." });
   }
 
-  // Verify hash
-  const calculatedHash = db.hashPassword(password, user.passwordSalt);
-  if (calculatedHash !== user.passwordHash) {
+  // Verify hash using bcryptjs with automatic pbkdf2 fallback
+  const isMatch = db.verifyPassword(password, user.passwordHash, user.passwordSalt);
+  if (!isMatch) {
     return res.status(401).json({ error: "Invalid email or password." });
   }
 
@@ -34,11 +41,18 @@ router.post("/auth/login", (req: Request, res: Response) => {
     return res.status(403).json({ error: `Account is ${user.status.toLowerCase()}. Contact administration.` });
   }
 
-  const token = AuthService.generateToken(user);
+  // Generate tokens
+  const accessToken = AuthService.generateAccessToken(user);
+  const refreshToken = AuthService.generateRefreshToken(user);
+
+  // Store refresh token within database record
+  user.refreshToken = refreshToken;
+  db.save();
 
   // Return clean, un-hashed user profile containing credentials and meta
   res.json({
-    token,
+    token: accessToken,
+    refreshToken: refreshToken,
     user: {
       id: user.id,
       fullName: user.fullName,
@@ -68,9 +82,46 @@ router.post("/auth/reset", (req: Request, res: Response) => {
   const creds = db.createCredentials(newPassword);
   user.passwordHash = creds.hash;
   user.passwordSalt = creds.salt;
+  user.refreshToken = ""; // clear session on reset
   db.save();
 
   res.json({ message: "Password updated successfully! You can now log in." });
+});
+
+// TOKEN REFRESH ENDPOINT
+router.post("/auth/refresh", (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+  
+  if (!refreshToken) {
+    return res.status(400).json({ error: "Refresh token is required." });
+  }
+  
+  const decoded = AuthService.verifyRefreshToken(refreshToken);
+  if (!decoded) {
+    return res.status(401).json({ error: "Invalid or expired refresh token." });
+  }
+  
+  const users = db.getUsers();
+  const user = users.find(u => u.id === decoded.userId);
+  if (!user || user.refreshToken !== refreshToken) {
+    return res.status(410).json({ error: "Expired or mismatched refresh session." });
+  }
+  
+  const newAccessToken = AuthService.generateAccessToken(user);
+  res.json({ token: newAccessToken });
+});
+
+// SECURE LOGOUT (INVALIDATES SESSION REFRESH KEYS)
+router.post("/auth/logout", authenticate, (req: Request, res: Response) => {
+  const userPayload = (req as any).user;
+  if (userPayload) {
+    const user = db.getUsers().find(u => u.id === userPayload.userId);
+    if (user) {
+      user.refreshToken = ""; // Revoke token
+      db.save();
+    }
+  }
+  res.json({ success: true, message: "Logged out successfully." });
 });
 
 // Current user verification/refresh
@@ -326,7 +377,7 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
     };
   });
 
-  // Apply Global Search
+  // Apply Global Search (Name, Phone, Email, Member ID, Trainer name, or Membership name)
   const search = req.query.search?.toString().toLowerCase();
   if (search) {
     mergedList = mergedList.filter(
@@ -334,7 +385,9 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
         m.fullName.toLowerCase().includes(search) ||
         m.email.toLowerCase().includes(search) ||
         m.phone.includes(search) ||
-        m.memberId.toLowerCase().includes(search)
+        m.memberId.toLowerCase().includes(search) ||
+        m.trainerName.toLowerCase().includes(search) ||
+        m.planName.toLowerCase().includes(search)
     );
   }
 
@@ -1210,6 +1263,267 @@ router.get("/reports/export", authenticate, authorize(["GYM_OWNER"]), (req: Requ
   }
 
   res.status(400).json({ error: "Unsupported report parameter requested." });
+});
+
+// ==========================================
+// 13. SETTINGS ENDPOINTS
+// ==========================================
+router.get("/settings", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const config = SettingsService.getSettings(user.gymId || "gym-1");
+  res.json(config);
+});
+
+router.put("/settings", authenticate, authorize(["GYM_OWNER"]), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const actor = { id: user.userId, name: user.email, role: user.role };
+  try {
+    const updated = SettingsService.updateSettings(user.gymId || "gym-1", req.body, actor);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 14. INVOICES & PAYMENTS TRADING ENDPOINTS
+// ==========================================
+router.post("/payments/collect", authenticate, requirePermission("MANAGE_PAYMENTS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { memberId, amount, type, paymentMode, notes } = req.body;
+  
+  if (!memberId || !amount || !type || !paymentMode) {
+    return res.status(400).json({ error: "Required fields: memberId, amount, type, paymentMode" });
+  }
+  
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const transaction = PaymentService.collectFee({
+      gymId: user.gymId || "gym-1",
+      memberId,
+      amount: Number(amount),
+      type,
+      paymentMode,
+      notes,
+      actor
+    });
+    res.status(201).json(transaction);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get("/payments/receipt/:invoiceNo", authenticate, (req: Request, res: Response) => {
+  try {
+    const receipt = PaymentService.getReceiptDetails(req.params.invoiceNo);
+    res.json(receipt);
+  } catch (err: any) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+router.get("/payments/list", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const payments = db.getPayments().filter(p => p.gymId === user.gymId);
+  res.json(payments);
+});
+
+// ==========================================
+// 15. EXPENSE ENDPOINTS
+// ==========================================
+router.get("/expenses", authenticate, requirePermission("VIEW_REPORTS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const list = ExpenseService.getExpenses(user.gymId || "gym-1");
+  res.json(list);
+});
+
+router.post("/expenses", authenticate, requirePermission("MANAGE_PAYMENTS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { category, amount, date, description } = req.body;
+  if (!category || !amount || !date) {
+    return res.status(400).json({ error: "Required fields: category, amount, date" });
+  }
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const newExpense = ExpenseService.createExpense({
+      gymId: user.gymId || "gym-1",
+      category,
+      amount: Number(amount),
+      date,
+      description,
+      actor
+    });
+    res.status(201).json(newExpense);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put("/expenses/:id", authenticate, requirePermission("MANAGE_PAYMENTS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const updated = ExpenseService.updateExpense(req.params.id, req.body, actor);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(100).json({ error: err.message });
+  }
+});
+
+router.delete("/expenses/:id", authenticate, requirePermission("MANAGE_PAYMENTS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    ExpenseService.deleteExpense(req.params.id, actor);
+    res.json({ success: true, message: "Expense record removed." });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 16. MEMBERSHIP ACTIONS ENDPOINTS
+// ==========================================
+router.post("/memberships/add", authenticate, requirePermission("MANAGE_MEMBERS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { memberId, planId, startDate, pricePaid } = req.body;
+  if (!memberId || !planId || !startDate || pricePaid === undefined) {
+    return res.status(400).json({ error: "Missing required params: memberId, planId, startDate, pricePaid" });
+  }
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const result = MembershipService.addMembership({
+      gymId: user.gymId || "gym-1",
+      memberId,
+      planId,
+      startDate,
+      pricePaid: Number(pricePaid),
+      actor
+    });
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/memberships/renew", authenticate, requirePermission("MANAGE_MEMBERS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { memberId, planId, startDateStr, pricePaid } = req.body;
+  if (!memberId || !planId || pricePaid === undefined) {
+    return res.status(400).json({ error: "Missing parameters: memberId, planId, pricePaid" });
+  }
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const result = MembershipService.renewMembership({
+      gymId: user.gymId || "gym-1",
+      memberId,
+      planId,
+      startDateStr,
+      pricePaid: Number(pricePaid),
+      actor
+    });
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/memberships/upgrade", authenticate, requirePermission("MANAGE_MEMBERS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { memberId, newPlanId, pricePaid } = req.body;
+  if (!memberId || !newPlanId || pricePaid === undefined) {
+    return res.status(400).json({ error: "Missing parameters: memberId, newPlanId, pricePaid" });
+  }
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const result = MembershipService.upgradeMembership({
+      gymId: user.gymId || "gym-1",
+      memberId,
+      newPlanId,
+      pricePaid: Number(pricePaid),
+      actor
+    });
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/memberships/freeze", authenticate, requirePermission("MANAGE_MEMBERS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { memberId } = req.body;
+  if (!memberId) return res.status(400).json({ error: "memberId is required." });
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const result = MembershipService.freezeMembership({ memberId, actor });
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/memberships/cancel", authenticate, requirePermission("MANAGE_MEMBERS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { memberId } = req.body;
+  if (!memberId) return res.status(400).json({ error: "memberId is required." });
+  try {
+    const actor = { id: user.userId, name: user.email, role: user.role };
+    const result = MembershipService.cancelMembership({ memberId, actor });
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get("/memberships/history/:memberId", authenticate, (req: Request, res: Response) => {
+  const list = db.getMemberMemberships().filter(m => m.memberId === req.params.memberId);
+  res.json(list);
+});
+
+// ==========================================
+// 17. REVISED CRM DASHBOARD SUMMARY ENDPOINT
+// ==========================================
+router.get("/dashboard/summary", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  // Trigger automated notification checking logic for this user's workspace
+  try {
+    NotificationService.triggerAutomatedReminders(gymId);
+  } catch (err) {
+    console.error("Auto reminders failure", err);
+  }
+
+  const membersCountTotal = db.getUsers().filter(u => u.gymId === gymId && u.role === "MEMBER").length;
+  const femaleCount = db.getMembers().filter(m => m.gymId === gymId && m.gender === "Female").length;
+  const maleCount = db.getMembers().filter(m => m.gymId === gymId && m.gender === "Male").length;
+
+  const financial = ExpenseService.getFinancialMetrics(gymId);
+  const membershipsStats = MembershipService.getDashboardMetrics(gymId);
+
+  // Today's attendance headcount
+  const todayStr = new Date().toISOString().split("T")[0];
+  const attendanceTodayCount = db.getAttendance().filter(a => a.gymId === gymId && a.date === todayStr).length;
+
+  res.json({
+    membersCountTotal,
+    genders: {
+      femaleCount,
+      maleCount
+    },
+    financial,
+    membershipsStats,
+    attendanceTodayCount
+  });
+});
+
+// ==========================================
+// 18. SYSTEM AUDIT LOGS ENDPOINT
+// ==========================================
+router.get("/audit-logs", authenticate, requirePermission("MANAGE_SETTINGS"), (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const list = AuditService.getLogs(user.gymId);
+  res.json(list);
 });
 
 export default router;
