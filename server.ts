@@ -2,8 +2,12 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import apiRouter from "./src/server/routes/api";
+import { db } from "./src/server/database/database";
 
 async function startServer() {
+  // Initialize MySQL connection, load schema and seed tables if active
+  await db.initMySQL();
+
   const app = express();
   const PORT = 3000;
 

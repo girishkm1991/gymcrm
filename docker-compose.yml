@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # 1. MySQL 8 Database Container
+  gymcrm-db:
+    image: mysql:8
+    container_name: gymcrm-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: gymcrm
+      MYSQL_USER: gymuser
+      MYSQL_PASSWORD: gympass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. GymFlow CRM Application Container
+  gymcrm-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gymcrm-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development  # Use development for auto-reload, can be set to production
+      - DB_HOST=gymcrm-db
+      - DB_PORT=3306
+      - DB_NAME=gymcrm
+      - DB_USER=gymuser
+      - DB_PASSWORD=gympass
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL}
+    # Mount local directories to map source code updates inside the container for hot reload
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      gymcrm-db:
+        condition: service_healthy
+
+  # 3. phpMyAdmin Administrative UI Container
+  gymcrm-phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: gymcrm-phpmyadmin
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_HOST=gymcrm-db
+      - PMA_PORT=3306
+    depends_on:
+      gymcrm-db:
+        condition: service_healthy
+
+# Define named persistent volumes for database reliability
+volumes:
+  mysql_data:
+    driver: local
