@@ -14,6 +14,7 @@ interface DashboardViewProps {
 
 export default function DashboardView({ user, setTab }: DashboardViewProps) {
   const [stats, setStats] = useState<any>(null);
+  const [summary, setSummary] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,6 +23,9 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
       try {
         const statsRes = await api.get("/dashboard/stats");
         setStats(statsRes.data);
+
+        const summaryRes = await api.get("/dashboard/summary");
+        setSummary(summaryRes.data);
 
         const notifRes = await api.get("/notifications");
         setNotifications(notifRes.data.slice(0, 4)); // Only show top 4 alerts
@@ -382,6 +386,68 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
           <div className="text-black/80 text-[10px] mt-2 font-bold italic">Highest standing peak</div>
         </div>
       </div>
+
+      {/* SaaS Live Branch KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* New Members This Month */}
+        <div className="bg-[#111111] border border-zinc-800 p-4.5 rounded-2xl">
+          <div className="text-zinc-500 font-mono text-[9px] uppercase tracking-wider">New Signups (Month)</div>
+          <div className="text-2xl font-black text-white mt-1">+{summary?.newMembersThisMonth || 0}</div>
+        </div>
+
+        {/* Renewals Due */}
+        <div className="bg-[#111111] border border-zinc-800 p-4.5 rounded-2xl">
+          <div className="text-zinc-400 font-mono text-[9px] uppercase tracking-wider flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full inline-block"></span> Renewals Due
+          </div>
+          <div className="text-2xl font-black text-amber-500 mt-1">{summary?.renewalsCount || 0} Members</div>
+        </div>
+
+        {/* Frozen Members */}
+        <div className="bg-[#111111] border border-zinc-800 p-4.5 rounded-2xl">
+          <div className="text-zinc-500 font-mono text-[9px] uppercase tracking-wider">Frozen Accounts</div>
+          <div className="text-2xl font-black text-zinc-400 mt-1">{summary?.frozenCount || 0} Inactive</div>
+        </div>
+
+        {/* Today's Birthdays */}
+        <div className="bg-[#111111] border border-zinc-800 p-4.5 rounded-2xl overflow-hidden col-span-2">
+          <div className="text-zinc-400 font-mono text-[9px] uppercase tracking-wider">Birthdays Today 🎂</div>
+          <div className="flex items-center gap-2 mt-2.5 overflow-x-auto">
+            {summary?.todaysBirthdays?.length === 0 ? (
+              <span className="text-[10px] text-zinc-500 font-mono">No birthdays today</span>
+            ) : (
+              summary?.todaysBirthdays?.map((b: any) => (
+                <div key={b.id} className="flex items-center gap-1 bg-zinc-950 p-1.5 pr-2.5 rounded-lg border border-zinc-900 shrink-0">
+                  <img src={b.photo} className="w-5 h-5 rounded-full object-cover" referrerPolicy="no-referrer" />
+                  <span className="text-[10px] text-zinc-300 font-bold max-w-[80px] truncate">{b.name}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Week Expiries Panel */}
+      {summary?.expiriesThisWeek?.length > 0 && (
+        <div className="bg-[#111111]/90 border border-amber-500/10 p-5 rounded-3xl space-y-3.5">
+          <div className="text-xs font-bold font-mono text-amber-500 tracking-wider flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> TARGET EXPIRATIONS THIS WEEK ({summary.expiriesThisWeek.length})
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {summary.expiriesThisWeek.map((ex: any) => (
+              <div key={ex.memberId} className="bg-zinc-950 border border-zinc-900 p-3 rounded-xl text-xs flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-white">{ex.name}</div>
+                  <div className="text-[9px] text-zinc-500 font-mono">{ex.planName}</div>
+                </div>
+                <div className="text-right text-[10px] font-mono text-amber-400">
+                  Ends: {ex.expiryDate}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main split: Charts left + Alerts right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

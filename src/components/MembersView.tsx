@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Plus, Search, Filter, Edit, Delete, Eye, X, ArrowLeft, Dumbbell, Activity, ShieldAlert, BadgeCheck, FileText, Calendar, PlusCircle, Check, Trash2, Heart
+  Plus, Search, Filter, Edit, Eye, X, ArrowLeft, Dumbbell, Activity, ShieldAlert, 
+  Check, Trash2, Heart, Calendar, Clock, DollarSign, Camera, CreditCard, 
+  RefreshCw, Printer, AlertTriangle, Shield, Archive, ListTodo, PlusCircle, UserCheck
 } from "lucide-react";
+import { 
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line 
+} from "recharts";
 import api from "../services/api";
 import { Member, MembershipPlan } from "../types";
 
@@ -9,11 +14,25 @@ interface MembersViewProps {
   user: any;
 }
 
+type ProfileTab = 
+  | "OVERVIEW" 
+  | "PERSONAL" 
+  | "MEMBERSHIP" 
+  | "ATTENDANCE" 
+  | "PAYMENTS" 
+  | "WORKOUT" 
+  | "DIET" 
+  | "PROGRESS" 
+  | "PHOTOS" 
+  | "MEDICAL" 
+  | "TRAINER_NOTES" 
+  | "TIMELINE";
+
 export default function MembersView({ user }: MembersViewProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [trainers, setTrainers] = useState<any[]>([]);
-  
+
   // Searching & Filtering parameters
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -24,15 +43,21 @@ export default function MembersView({ user }: MembersViewProps) {
   // Layout Toggle controls
   const [activeForm, setActiveForm] = useState<"LIST" | "ADD" | "EDIT" | "PROFILE">("LIST");
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [activeProfileTab, setActiveProfileTab] = useState<ProfileTab>("OVERVIEW");
 
-  // Form parameters
+  // Profile-specific Sub datasets loaded concurrently
+  const [memberQrCode, setMemberQrCode] = useState<string>("");
+  const [progressHistory, setProgressHistory] = useState<any[]>([]);
+  const [photosList, setPhotosList] = useState<any[]>([]);
+  const [timelineEntries, setTimelineEntries] = useState<any[]>([]);
+  const [membershipHistory, setMembershipHistory] = useState<any[]>([]);
+
+  // Advanced registration/update inputs
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [gender, setGender] = useState<"Male" | "Female" | "Other">("Male");
-  const [dob, setDob] = useState("");
-  const [height, setHeight] = useState(175);
-  const [weight, setWeight] = useState(75);
+  const [dob, setDob] = useState("1995-01-01");
   const [bloodGroup, setBloodGroup] = useState("O+");
   const [address, setAddress] = useState("");
   const [emergencyContactName, setEmergencyContactName] = useState("");
@@ -40,9 +65,78 @@ export default function MembersView({ user }: MembersViewProps) {
   const [trainerId, setTrainerId] = useState("");
   const [activePlanId, setActivePlanId] = useState("");
   const [photo, setPhoto] = useState("https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop");
-  const [status, setStatus] = useState<"Active" | "Inactive" | "Expired" | "Pending">("Active");
+  const [status, setStatus] = useState<any>("Active");
 
-  // Load datasets on focus
+  // Advanced Physical Details
+  const [height, setHeight] = useState<number>(175);
+  const [weight, setWeight] = useState<number>(75);
+  const [bodyFat, setBodyFat] = useState<number>(15);
+  const [chest, setChest] = useState<number>(95);
+  const [waist, setWaist] = useState<number>(80);
+  const [hip, setHip] = useState<number>(90);
+  const [biceps, setBiceps] = useState<number>(35);
+  const [thigh, setThigh] = useState<number>(55);
+  const [fitnessGoal, setFitnessGoal] = useState("Lean Muscle Gain");
+
+  // Advanced Medical Details
+  const [medicalConditions, setMedicalConditions] = useState("");
+  const [injuries, setInjuries] = useState("");
+  const [allergies, setAllergies] = useState("");
+  const [medications, setMedications] = useState("");
+  const [medicalWarnings, setMedicalWarnings] = useState("");
+
+  // System Assigners
+  const [locker, setLocker] = useState("");
+  const [ptPackage, setPtPackage] = useState("");
+  const [trainerNotes, setTrainerNotes] = useState("");
+
+  // Sub-dialog states for Membership life transitions
+  const [isRenewOpen, setIsRenewOpen] = useState(false);
+  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+  const [renewPlanId, setRenewPlanId] = useState("");
+  const [renewStartDate, setRenewStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [renewPrice, setRenewPrice] = useState("");
+
+  // Progress Logging Drawer inputs
+  const [isLogProgressOpen, setIsLogProgressOpen] = useState(false);
+  const [logWeight, setLogWeight] = useState(75);
+  const [logBodyFat, setLogBodyFat] = useState(15);
+  const [logChest, setLogChest] = useState(95);
+  const [logWaist, setLogWaist] = useState(80);
+  const [logHip, setLogHip] = useState(90);
+  const [logBiceps, setLogBiceps] = useState(35);
+  const [logThigh, setLogThigh] = useState(55);
+  const [logProgressNotes, setLogProgressNotes] = useState("");
+
+  // Photo uploading inputs
+  const [photoCategory, setPhotoCategory] = useState<"Front" | "Side" | "Back">("Front");
+  const [photoBase64, setPhotoBase64] = useState("");
+
+  // Utility to auto calculate age from dob
+  const calculateAge = (dateString: string) => {
+    if (!dateString) return 0;
+    const today = new Date();
+    const birthDate = new Date(dateString);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  // Safe height in meters calculation for BMI
+  const heightInM = height > 0 ? height / 100 : 1.75;
+  const autoBMI = parseFloat((weight / (heightInM * heightInM)).toFixed(1));
+
+  // BMI status color helpers
+  const getBmiDesc = (bmi: number) => {
+    if (bmi < 18.5) return { text: "Underweight", color: "text-blue-400", bg: "bg-blue-500/10" };
+    if (bmi < 25) return { text: "Normal Fit", color: "text-emerald-400", bg: "bg-emerald-500/10" };
+    if (bmi < 30) return { text: "Overweight", color: "text-amber-500", bg: "bg-amber-500/10" };
+    return { text: "Obese Group", color: "text-red-500", bg: "bg-red-500/10" };
+  };
+
   async function loadData() {
     try {
       const q = `?search=${search}&status=${statusFilter}&gender=${genderFilter}&page=${page}&limit=10`;
@@ -50,7 +144,6 @@ export default function MembersView({ user }: MembersViewProps) {
       setMembers(response.data.data);
       setTotalPages(response.data.pagination.totalPages || 1);
 
-      // Support drop-down components
       const plansRes = await api.get("/membership-plans");
       setPlans(plansRes.data);
 
@@ -65,26 +158,12 @@ export default function MembersView({ user }: MembersViewProps) {
     loadData();
   }, [search, statusFilter, genderFilter, page, activeForm]);
 
-  // Dynamic reactive BMI estimation
-  const heightInMeters = height > 0 ? height / 100 : 1.75;
-  const estimatedBMI = parseFloat((weight / (heightInMeters * heightInMeters)).toFixed(1));
-
-  // BMI Label Helper
-  const getBmiStatus = (bmi: number) => {
-    if (bmi < 18.5) return { text: "Underweight", color: "text-blue-400" };
-    if (bmi < 25) return { text: "Normal Range", color: "text-emerald-400" };
-    if (bmi < 30) return { text: "Overweight", color: "text-amber-500" };
-    return { text: "Obese Category", color: "text-red-500" };
-  };
-
   const handleOpenAdd = () => {
     setFullName("");
     setEmail("");
     setPhone("");
     setGender("Male");
     setDob("1995-01-01");
-    setHeight(175);
-    setWeight(75);
     setBloodGroup("O+");
     setAddress("");
     setEmergencyContactName("");
@@ -92,18 +171,33 @@ export default function MembersView({ user }: MembersViewProps) {
     setTrainerId("");
     setActivePlanId("");
     setPhoto("https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop");
+    setHeight(175);
+    setWeight(75);
+    setBodyFat(15);
+    setChest(95);
+    setWaist(80);
+    setHip(90);
+    setBiceps(35);
+    setThigh(55);
+    setFitnessGoal("Lean Muscle Gain");
+    setMedicalConditions("");
+    setInjuries("");
+    setAllergies("");
+    setMedications("");
+    setMedicalWarnings("");
+    setLocker("");
+    setPtPackage("");
+    setTrainerNotes("");
     setActiveForm("ADD");
   };
 
-  const handleOpenEdit = (m: Member) => {
+  const handleOpenEdit = (m: any) => {
     setSelectedMember(m);
     setFullName(m.fullName);
     setEmail(m.email);
     setPhone(m.phone);
     setGender(m.gender);
     setDob(m.dob);
-    setHeight(m.height);
-    setWeight(m.weight);
     setBloodGroup(m.bloodGroup);
     setAddress(m.address);
     setEmergencyContactName(m.emergencyContactName);
@@ -112,17 +206,113 @@ export default function MembersView({ user }: MembersViewProps) {
     setActivePlanId(m.activePlanId || "");
     setPhoto(m.photo);
     setStatus(m.status);
+
+    setHeight(m.height || 175);
+    setWeight(m.weight || 75);
+    setBodyFat(m.bodyFat || 15);
+    setChest(m.chest || 95);
+    setWaist(m.waist || 80);
+    setHip(m.hip || 90);
+    setBiceps(m.biceps || 35);
+    setThigh(m.thigh || 55);
+    setFitnessGoal(m.fitnessGoal || "");
+    setMedicalConditions(m.medicalConditions || "");
+    setInjuries(m.injuries || "");
+    setAllergies(m.allergies || "");
+    setMedications(m.medications || "");
+    setMedicalWarnings(m.medicalWarnings || "");
+    setLocker(m.locker || "");
+    setPtPackage(m.ptPackage || "");
+    setTrainerNotes(m.trainerNotes || "");
     setActiveForm("EDIT");
   };
 
   const handleViewProfile = async (mId: string) => {
     try {
       const response = await api.get(`/members/${mId}`);
-      setSelectedMember(response.data);
+      const m = response.data;
+      setSelectedMember(m);
+      
+      // Load concurrent datasets
+      try {
+        const qrRes = await api.get(`/members/${mId}/qr`);
+        setMemberQrCode(qrRes.data.token || "");
+      } catch (e) { console.error(e); }
+
+      try {
+        const prRes = await api.get(`/members/${mId}/progress`);
+        setProgressHistory(prRes.data || []);
+      } catch (e) { console.error(e); }
+
+      try {
+        const phRes = await api.get(`/members/${mId}/photos`);
+        setPhotosList(phRes.data || []);
+      } catch (e) { console.error(e); }
+
+      try {
+        const tlRes = await api.get(`/members/${mId}/timeline`);
+        setTimelineEntries(tlRes.data || []);
+      } catch (e) { console.error(e); }
+
+      try {
+        const histRes = await api.get(`/memberships/history/${mId}`);
+        setMembershipHistory(histRes.data || []);
+      } catch (e) { console.error(e); }
+
+      setActiveProfileTab("OVERVIEW");
       setActiveForm("PROFILE");
     } catch (err) {
-      alert("Error retrieving detailed profile schema.");
+      alert("Error retrieving detailed multi-tenant profile metrics.");
     }
+  };
+
+  const reloadProfileSubsets = async (mId: string) => {
+    try {
+      const prRes = await api.get(`/members/${mId}/progress`);
+      setProgressHistory(prRes.data || []);
+      const phRes = await api.get(`/members/${mId}/photos`);
+      setPhotosList(phRes.data || []);
+      const tlRes = await api.get(`/members/${mId}/timeline`);
+      setTimelineEntries(tlRes.data || []);
+      const histRes = await api.get(`/memberships/history/${mId}`);
+      setMembershipHistory(histRes.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Base64 file reader helper
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("File size exceeds 2MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPhoto(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Progress picture Base64 reader helper
+  const handleProgressPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Photo exceeds 2MB limits.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPhotoBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateMember = async (e: React.FormEvent) => {
@@ -134,15 +324,30 @@ export default function MembersView({ user }: MembersViewProps) {
         phone,
         gender,
         dob,
-        height,
-        weight,
         bloodGroup,
         address,
         emergencyContactName,
         emergencyContactPhone,
         trainerId: trainerId || null,
         activePlanId: activePlanId || null,
-        photo
+        photo,
+        height,
+        weight,
+        bodyFat,
+        chest,
+        waist,
+        hip,
+        biceps,
+        thigh,
+        fitnessGoal,
+        medicalConditions,
+        injuries,
+        allergies,
+        medications,
+        medicalWarnings,
+        locker,
+        ptPackage,
+        trainerNotes
       });
       setActiveForm("LIST");
     } catch (err: any) {
@@ -155,11 +360,10 @@ export default function MembersView({ user }: MembersViewProps) {
     try {
       await api.put(`/members/${selectedMember.id}`, {
         fullName,
+        email,
         phone,
         gender,
         dob,
-        height,
-        weight,
         bloodGroup,
         address,
         emergencyContactName,
@@ -167,7 +371,24 @@ export default function MembersView({ user }: MembersViewProps) {
         trainerId: trainerId || null,
         activePlanId: activePlanId || null,
         status,
-        photo
+        photo,
+        height,
+        weight,
+        bodyFat,
+        chest,
+        waist,
+        hip,
+        biceps,
+        thigh,
+        fitnessGoal,
+        medicalConditions,
+        injuries,
+        allergies,
+        medications,
+        medicalWarnings,
+        locker,
+        ptPackage,
+        trainerNotes
       });
       setActiveForm("LIST");
     } catch (err: any) {
@@ -186,7 +407,172 @@ export default function MembersView({ user }: MembersViewProps) {
     }
   };
 
-  const [activeProfileTab, setActiveProfileTab] = useState<"BIO" | "WORKOUT" | "DIET" | "PAYMENTS">("BIO");
+  // Freeze action handler
+  const handleFreeze = async () => {
+    if (!confirm("Are you sure you want to freeze this membership?")) return;
+    try {
+      await api.post("/memberships/freeze", { memberId: selectedMember.id });
+      alert("Membership successfully frozen.");
+      handleViewProfile(selectedMember.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to freeze.");
+    }
+  };
+
+  // Cancel action handler
+  const handleCancel = async () => {
+    if (!confirm("Are you sure you want to cancel this membership? This is permanent.")) return;
+    try {
+      await api.post("/memberships/cancel", { memberId: selectedMember.id });
+      alert("Membership successfully canceled.");
+      handleViewProfile(selectedMember.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to cancel.");
+    }
+  };
+
+  // Renew action handler
+  const handleRenewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renewPlanId || !renewPrice) {
+      alert("Plan and Price are required.");
+      return;
+    }
+    try {
+      await api.post("/memberships/renew", {
+        memberId: selectedMember.id,
+        planId: renewPlanId,
+        startDateStr: renewStartDate,
+        pricePaid: renewPrice
+      });
+      alert("Membership successfully renewed!");
+      setIsRenewOpen(false);
+      handleViewProfile(selectedMember.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to renew.");
+    }
+  };
+
+  // Upgrade action handler
+  const handleUpgradeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renewPlanId || !renewPrice) {
+      alert("New plan and Price details are required.");
+      return;
+    }
+    try {
+      await api.post("/memberships/upgrade", {
+        memberId: selectedMember.id,
+        newPlanId: renewPlanId,
+        pricePaid: renewPrice
+      });
+      alert("Membership successfully upgraded!");
+      setIsUpgradeOpen(false);
+      handleViewProfile(selectedMember.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to upgrade.");
+    }
+  };
+
+  // Log measurements trends progress handler
+  const handleLogProgress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post(`/members/${selectedMember.id}/progress`, {
+        weight: logWeight,
+        bodyFat: logBodyFat,
+        chest: logChest,
+        waist: logWaist,
+        hip: logHip,
+        biceps: logBiceps,
+        thigh: logThigh,
+        notes: logProgressNotes
+      });
+      alert("Physical metrics successfully recorded!");
+      setIsLogProgressOpen(false);
+      setLogProgressNotes("");
+      reloadProfileSubsets(selectedMember.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to log metrics.");
+    }
+  };
+
+  // Progress comparison picture upload
+  const handleUploadProgressPhoto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!photoBase64) {
+      alert("Please choose a photograph first.");
+      return;
+    }
+    try {
+      await api.post(`/members/${selectedMember.id}/photos`, {
+        category: photoCategory,
+        photo: photoBase64
+      });
+      alert("Comparison progress photo uploaded!");
+      setPhotoBase64("");
+      reloadProfileSubsets(selectedMember.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Photo upload failed.");
+    }
+  };
+
+  // Printable membership card overlay
+  const handlePrintCard = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Membership Card - ${selectedMember.fullName}</title>
+          <style>
+            body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f7fafc; }
+            .card { width: 420px; height: 240px; background: #0f172a; color: white; border-radius: 16px; padding: 20px; box-sizing: border-box; display: flex; justify-content: space-between; font-size: 11px; font-family: monospace; border: 2px solid #e11d48; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
+            .avatar { width: 80px; height: 80px; border-radius: 8px; object-cover: cover; border: 2px solid #f59e0b; }
+            .left-col { display: flex; flex-direction: column; justify-content: space-between; width: 62%; }
+            .right-col { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; width: 34%; }
+            .title { color: #f59e0b; font-weight: 900; font-size: 14px; margin-bottom: 3px; }
+            .badge { background-color: #e11d48; color: white; border-radius: 4px; padding: 2px 6px; font-size: 9px; uppercase: true; display: inline-block; font-weight: bold; }
+            .qr { width: 75px; height: 75px; background: white; padding: 4px; border-radius: 8px; }
+            .qr-token { color: #64748b; font-size: 8px; font-family: monospace; margin-top: 3px; max-width: 90px; text-overflow: truncate; overflow: hidden; white-space: nowrap; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="left-col">
+              <div>
+                <div class="title">GYMFLOW SYSTEM</div>
+                <div style="font-size: 12px; font-weight: bold; margin-top: 5px; color: #fff;">${selectedMember.fullName}</div>
+                <div style="color: #cbd5e1; margin-top: 2px;">CODE ID: ${selectedMember.memberId}</div>
+              </div>
+              <div>
+                <div style="color: #94a3b8;">Membership: <strong style="color: #fff;">${selectedMember.planName || "Active Access"}</strong></div>
+                <div style="color: #94a3b8; margin-top: 2.5px;">Valid Thru: <strong style="color: #e11d48;">${selectedMember.endDate || "Unlimited"}</strong></div>
+              </div>
+            </div>
+            <div class="right-col">
+              <img src="${selectedMember.photo}" class="avatar" />
+              <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                <!-- Simulated Secure QR displaying encrypted signature -->
+                <div class="qr" style="display: flex; align-items: center; justify-content: center; font-size: 8px; color: black; font-weight: bold; text-align: center;">
+                   [QR CODE]<br/>
+                   ${selectedMember.memberId}
+                </div>
+                <span class="qr-token">Token Standby</span>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   return (
     <div className="space-y-6 text-zinc-100">
@@ -236,7 +622,7 @@ export default function MembersView({ user }: MembersViewProps) {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500"
+                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white"
               >
                 <option value="ALL">All Status</option>
                 <option value="Active">Active</option>
@@ -248,7 +634,7 @@ export default function MembersView({ user }: MembersViewProps) {
               <select
                 value={genderFilter}
                 onChange={(e) => setGenderFilter(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500"
+                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white"
               >
                 <option value="ALL">All Genders</option>
                 <option value="Male">Male</option>
@@ -273,7 +659,7 @@ export default function MembersView({ user }: MembersViewProps) {
                     <th className="py-4 px-5 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800 text-xs">
+                <tbody className="divide-y divide-zinc-800 text-xs text-zinc-300">
                   {members.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center py-10 text-zinc-500 font-mono">
@@ -282,19 +668,19 @@ export default function MembersView({ user }: MembersViewProps) {
                     </tr>
                   ) : (
                     members.map((m) => {
-                      const bmiVal = getBmiStatus(m.bmi);
+                      const bmiVal = getBmiDesc(m.bmi || 24);
                       return (
                         <tr key={m.id} className="hover:bg-zinc-850/50 transition-colors">
                           <td className="py-3 px-5">
                             <div className="flex items-center gap-3">
                               <img
                                 referrerPolicy="no-referrer"
-                                src={m.photo}
+                                src={m.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"}
                                 alt={m.fullName}
-                                className="w-10 h-10 rounded-xl object-cover border border-zinc-800 shrink-0"
+                                className="w-10 h-10 rounded-xl object-cover border border-zinc-850 shrink-0"
                               />
                               <div>
-                                <div className="font-bold text-white text-sm" id={`member-name-${m.id}`}>{m.fullName}</div>
+                                <div className="font-bold text-white text-sm">{m.fullName}</div>
                                 <div className="text-[10px] font-bold font-mono text-amber-500 mt-0.5">{m.memberId}</div>
                               </div>
                             </div>
@@ -305,32 +691,32 @@ export default function MembersView({ user }: MembersViewProps) {
                           </td>
                           <td className="py-3 px-5">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-black text-white">{m.bmi}</span>
-                              <span className={`text-[10px] font-semibold ${bmiVal.color}`}>({bmiVal.text})</span>
+                              <span className="font-black text-white">{m.bmi || "—"}</span>
+                              {m.bmi && <span className={`text-[10px] font-semibold ${bmiVal.color}`}>({bmiVal.text})</span>}
                             </div>
-                            <div className="text-[10px] text-zinc-500 mt-0.5">{m.height}cm • {m.weight}kg</div>
+                            <div className="text-[10px] text-zinc-500 mt-0.5">{m.height || "—"}cm • {m.weight || "—"}kg</div>
                           </td>
-                          <td className="py-3 px-5 text-white font-medium">
-                            {m.planName}
+                          <td className="py-3 px-5 text-zinc-200 font-medium">
+                            {m.planName || "No active plan"}
                           </td>
-                          <td className="py-3 px-5 text-zinc-300">
-                            {m.trainerName}
+                          <td className="py-3 px-5 text-zinc-400">
+                            {m.trainerName || "—"}
                           </td>
                           <td className="py-3 px-5 text-center">
-                            <span className={`inline-block px-2 py-0.5. rounded-full text-[10px] font-bold uppercase font-mono ${
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
                               m.status === "Active" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                              m.status === "Expired" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                              m.status === "Expired" ? "bg-red-500/10 text-red-500 border border-red-500/10" :
                               m.status === "Pending" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
-                              "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                              "bg-zinc-800 text-zinc-400 border border-zinc-750"
                             }`}>
                               {m.status}
                             </span>
                           </td>
-                          <td className="py-3 px-5 text-right shrink-0">
+                          <td className="py-3 px-5 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
                                 type="button"
-                                title="View Member Detail Profile Layout"
+                                title="View Member Profile"
                                 onClick={() => handleViewProfile(m.id)}
                                 className="p-2 bg-zinc-950 hover:bg-zinc-850 text-amber-500 border border-zinc-800 rounded-xl"
                               >
@@ -373,7 +759,7 @@ export default function MembersView({ user }: MembersViewProps) {
                     type="button"
                     disabled={page === 1}
                     onClick={() => setPage(page - 1)}
-                    className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white"
+                    className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white cursor-pointer"
                   >
                     Previous
                   </button>
@@ -381,7 +767,7 @@ export default function MembersView({ user }: MembersViewProps) {
                     type="button"
                     disabled={page === totalPages}
                     onClick={() => setPage(page + 1)}
-                    className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white"
+                    className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white cursor-pointer"
                   >
                     Next
                   </button>
@@ -392,9 +778,9 @@ export default function MembersView({ user }: MembersViewProps) {
         </>
       )}
 
-      {/* 2. ADD MEMBER FORM */}
+      {/* 2. REGISTER MEMBER (ADD) */}
       {activeForm === "ADD" && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-3xl mx-auto space-y-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-4xl mx-auto space-y-6">
           <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <PlusCircle className="text-amber-500 w-5 h-5 animate-pulse" /> Register New Gymnasium Member
@@ -408,200 +794,389 @@ export default function MembersView({ user }: MembersViewProps) {
             </button>
           </div>
 
-          <form onSubmit={handleCreateMember} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">FULL NAME *</label>
-                <input
-                  type="text"
-                  placeholder="Chris Hemsworth"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-medium"
-                  required
-                />
+          <form onSubmit={handleCreateMember} className="space-y-6">
+            
+            {/* Section A: Personal Information */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
+                A. Personal Security Profile
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">FULL NAME *</label>
+                  <input
+                    type="text"
+                    placeholder="Chris Hemsworth"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">EMAIL ADDRESS *</label>
+                  <input
+                    type="email"
+                    placeholder="chris@hollywood.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">PHONE DIRECTORY *</label>
+                  <input
+                    type="text"
+                    placeholder="+1-555-123-4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">GENDER</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 focus:outline-none text-zinc-300 focus:border-amber-500"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">DATE OF BIRTH</label>
+                  <input
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white font-mono focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">BLOOD GROUP</label>
+                  <select
+                    value={bloodGroup}
+                    onChange={(e) => setBloodGroup(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300 focus:border-amber-500"
+                  >
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">OCCUPATION</label>
+                  <input
+                    type="text"
+                    placeholder="Software Engineer, Athlete, Doctor"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">EMERGENCY CONTACT NAME</label>
+                  <input
+                    type="text"
+                    placeholder="Relationship Contact Name"
+                    value={emergencyContactName}
+                    onChange={(e) => setEmergencyContactName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400 font-bold">EMERGENCY PHONE</label>
+                  <input
+                    type="text"
+                    placeholder="Relationship Contact Telephone"
+                    value={emergencyContactPhone}
+                    onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">EMAIL ADDRESS *</label>
-                <input
-                  type="email"
-                  placeholder="chris@hollywood.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-medium"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">PHONE DIRECTORY *</label>
-                <input
-                  type="text"
-                  placeholder="+1-555-123-4567"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-medium"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">GENDER</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value as any)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">DATE OF BIRTH</label>
-                <input
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">BLOOD GROUP</label>
-                <select
-                  value={bloodGroup}
-                  onChange={(e) => setBloodGroup(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="O+">O+</option>
-                  <option value="O-">O-</option>
-                  <option value="A+">A+</option>
-                  <option value="A-">A-</option>
-                  <option value="B+">B+</option>
-                  <option value="B-">B-</option>
-                  <option value="AB+">AB+</option>
-                  <option value="AB-">AB-</option>
-                </select>
-              </div>
-
-              {/* Physical BMI Metrics Panel */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">HEIGHT (cm)</label>
-                <input
-                  type="number"
-                  value={height}
-                  onChange={(e) => setHeight(parseInt(e.target.value) || 0)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">WEIGHT (kg)</label>
-                <input
-                  type="number"
-                  value={weight}
-                  onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
-                />
-              </div>
-            </div>
-
-            <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl flex justify-between items-center">
-              <div>
-                <span className="text-xs font-bold font-mono text-zinc-500">DYNAMIC BODY MASS INDEX SCORE (BMI):</span>
-                <span className="text-xl font-black text-white ml-2">{estimatedBMI}</span>
-              </div>
-              <span className={`text-xs font-bold uppercase font-mono ${getBmiStatus(estimatedBMI).color}`}>
-                ({getBmiStatus(estimatedBMI).text})
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">EMERGENCY CONTACT NAME</label>
-                <input
-                  type="text"
-                  placeholder="Homer Simpson"
-                  value={emergencyContactName}
-                  onChange={(e) => setEmergencyContactName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">EMERGENCY CONTACT PHONE</label>
-                <input
-                  type="text"
-                  placeholder="+1-555-5555"
-                  value={emergencyContactPhone}
-                  onChange={(e) => setEmergencyContactPhone(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">MEMBERSHIP PLAN</label>
-                <select
-                  value={activePlanId}
-                  onChange={(e) => setActivePlanId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="">Select plan (purchased)</option>
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">ASSIGN PROFESSIONAL COACH</label>
-                <select
-                  value={trainerId}
-                  onChange={(e) => setTrainerId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="">Unassigned (Self Training)</option>
-                  {trainers.map(t => (
-                    <option key={t.id} value={t.id}>{t.fullName}</option>
-                  ))}
-                </select>
+              <div className="space-y-1 text-xs">
+                <label className="text-zinc-400 font-bold">STREET RESIDENTIAL ADDRESS</label>
+                <textarea
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Street No, Area, City, State..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white h-16 resize-none focus:border-amber-500"
+                ></textarea>
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">RESIDENTIAL STREET ADDRESS</label>
-              <textarea
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Residential road details"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white h-20 resize-none"
-              ></textarea>
+            {/* Section B: Physical & Biomarker Metrics */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
+                B. Biometrics & Physical Stats
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-zinc-400">HEIGHT (cm)</label>
+                  <input
+                    type="number"
+                    value={height}
+                    onChange={(e) => setHeight(Number(e.target.value) || 175)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">WEIGHT (kg)</label>
+                  <input
+                    type="number"
+                    value={weight}
+                    onChange={(e) => setWeight(Number(e.target.value) || 75)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">BODY FAT %</label>
+                  <input
+                    type="number"
+                    value={bodyFat}
+                    onChange={(e) => setBodyFat(Number(e.target.value) || 15)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="p-3.5 bg-zinc-950 rounded-xl border border-zinc-850 flex justify-between items-center col-span-1">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-bold block">AUTO BMI:</span>
+                    <span className="text-lg font-black text-white">{autoBMI}</span>
+                  </div>
+                  <span className={`text-[10px] font-bold ${getBmiDesc(autoBMI).color}`}>
+                    {getBmiDesc(autoBMI).text}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-zinc-400">CHEST (cm)</label>
+                  <input
+                    type="number"
+                    value={chest}
+                    onChange={(e) => setChest(Number(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">WAIST (cm)</label>
+                  <input
+                    type="number"
+                    value={waist}
+                    onChange={(e) => setWaist(Number(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">HIP (cm)</label>
+                  <input
+                    type="number"
+                    value={hip}
+                    onChange={(e) => setHip(Number(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">BICEPS (cm)</label>
+                  <input
+                    type="number"
+                    value={biceps}
+                    onChange={(e) => setBiceps(Number(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">THIGH (cm)</label>
+                  <input
+                    type="number"
+                    value={thigh}
+                    onChange={(e) => setThigh(Number(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1 col-span-3">
+                  <label className="text-zinc-400">FITNESS GOAL / PROGRAM TARGET</label>
+                  <input
+                    type="text"
+                    placeholder="Weight loss, Hypertrophy, Cardiorespiratory endurance"
+                    value={fitnessGoal}
+                    onChange={(e) => setFitnessGoal(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">PHOTO WEB URL</label>
-              <input
-                type="text"
-                value={photo}
-                onChange={(e) => setPhoto(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-mono"
-              />
+            {/* Section C: Medical Index & Safety Notes */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
+                C. Medical Warnings & Health Profile
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-zinc-400">MEDICAL CONDITIONS (DIABETES, ASTHMA, ETC.)</label>
+                  <input
+                    type="text"
+                    placeholder="None or specify medical history"
+                    value={medicalConditions}
+                    onChange={(e) => setMedicalConditions(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">INJURIES / RESTRICTIONS</label>
+                  <input
+                    type="text"
+                    placeholder="Knee injury, spinal hernia restrictions"
+                    value={injuries}
+                    onChange={(e) => setInjuries(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">ALLERGIES</label>
+                  <input
+                    type="text"
+                    placeholder="Peanut, pollen, latex allergies"
+                    value={allergies}
+                    onChange={(e) => setAllergies(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">CURRENT MEDICATIONS</label>
+                  <input
+                    type="text"
+                    placeholder="Beta-blockers, insulin, etc."
+                    value={medications}
+                    onChange={(e) => setMedications(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1 text-xs">
+                <label className="text-red-400 font-bold tracking-wider">CRITICAL MEDICAL WARNINGS / ALERTS</label>
+                <textarea
+                  value={medicalWarnings}
+                  onChange={(e) => setMedicalWarnings(e.target.value)}
+                  placeholder="EXTREMELY IMPORTANT WARNINGS (Cardiac issues, seizure alerts) stored in red warning header banner..."
+                  className="w-full bg-zinc-950 border border-red-500/20 rounded-xl p-3 text-red-100 placeholder:text-zinc-700 h-16 resize-none focus:border-red-500"
+                ></textarea>
+              </div>
             </div>
 
-            <div className="flex gap-4 pt-2">
+            {/* Section D: Membership & Asset Allocations */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
+                D. Membership & Gymnasium Assets
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-zinc-400">MEMBERSHIP ACCESS PLAN</label>
+                  <select
+                    value={activePlanId}
+                    onChange={(e) => setActivePlanId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300"
+                  >
+                    <option value="">No Active Plan</option>
+                    {plans.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-zinc-400">ASSIGN PROFESSIONAL COACH</label>
+                  <select
+                    value={trainerId}
+                    onChange={(e) => setTrainerId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300"
+                  >
+                    <option value="">Unassigned (Self Training)</option>
+                    {trainers.map(t => (
+                      <option key={t.id} value={t.id}>{t.fullName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3 col-span-2">
+                  <div className="space-y-1">
+                    <label className="text-zinc-400">LOCKER NUMBER ALLOCATION</label>
+                    <input
+                      type="text"
+                      placeholder="Locker B-405, Premium Sec A"
+                      value={locker}
+                      onChange={(e) => setLocker(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-zinc-400">PERSONAL RECRUITMENT PACKAGE (PT)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 12-week Weight Cut, 48-session Bulk Plan"
+                      value={ptPackage}
+                      onChange={(e) => setPtPackage(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-3">
+                <div className="space-y-2">
+                  <label className="text-zinc-400 font-bold block">PROFILE PICTURE AVATAR URL</label>
+                  <input
+                    type="text"
+                    value={photo}
+                    onChange={(e) => setPhoto(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white font-mono"
+                  />
+                  <div className="text-[10px] text-zinc-500">Or drag and select a local file to upload dynamically:</div>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="block w-full text-[11px] text-zinc-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[11px] file:font-semibold file:bg-zinc-800 file:text-zinc-300 file:cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-4 bg-zinc-950 p-4 border border-zinc-850 rounded-2xl">
+                  {photo && (
+                    <img src={photo} className="w-20 h-20 rounded-xl object-cover border border-zinc-800" referrerPolicy="no-referrer" />
+                  )}
+                  <div className="text-[11px] text-zinc-400">
+                    Avatar picture live preview. Stored securely on system databases.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions Form buttons */}
+            <div className="flex gap-4 pt-4 border-t border-zinc-800">
               <button
                 type="button"
                 onClick={() => setActiveForm("LIST")}
-                className="flex-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-sm py-3 cursor-pointer select-none transition-all active:scale-95"
+                className="flex-1 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs py-3.5 transition cursor-pointer"
               >
                 Go Back
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-sm py-3 cursor-pointer select-none transition-all active:scale-95 shadow-lg shadow-amber-500/10"
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer shadow-lg shadow-amber-500/10"
               >
                 Record Profile Setup
               </button>
@@ -610,12 +1185,12 @@ export default function MembersView({ user }: MembersViewProps) {
         </div>
       )}
 
-      {/* 3. EDIT MEMBER FORM */}
+      {/* 3. EDIT MEMBER (EDIT SYSTEM VALUES) */}
       {activeForm === "EDIT" && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-3xl mx-auto space-y-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-4xl mx-auto space-y-6">
           <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Edit className="text-amber-500 w-5 h-5" /> Adjust Member Registry Values
+              <Edit className="text-amber-500 w-5 h-5" /> Adjust Registered Member CRM Values
             </h2>
             <button
               type="button"
@@ -626,77 +1201,65 @@ export default function MembersView({ user }: MembersViewProps) {
             </button>
           </div>
 
-          <form onSubmit={handleSaveEdit} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <form onSubmit={handleSaveEdit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">FULL NAME</label>
+                <label className="text-zinc-400 font-bold">FULL NAME</label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-medium"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
                   required
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">PHONE DIRECTORY</label>
+                <label className="text-zinc-400 font-bold">EMAIL</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400 font-bold">PHONE NUMBER</label>
                 <input
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
                   required
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">GENDER</label>
+                <label className="text-zinc-400">GENDER</label>
                 <select
                   value={gender}
                   onChange={(e) => setGender(e.target.value as any)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300"
                 >
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
-
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">DATE OF BIRTH</label>
+                <label className="text-zinc-400">DATE OF BIRTH</label>
                 <input
                   type="date"
                   value={dob}
                   onChange={(e) => setDob(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-mono"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white font-mono"
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">BLOOD GROUP</label>
-                <select
-                  value={bloodGroup}
-                  onChange={(e) => setBloodGroup(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="O+">O+</option>
-                  <option value="O-">O-</option>
-                  <option value="A+">A+</option>
-                  <option value="A-">A-</option>
-                  <option value="B+">B+</option>
-                  <option value="B-">B-</option>
-                  <option value="AB+">AB+</option>
-                  <option value="AB-">AB-</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">SYSTEM STATUS</label>
+                <label className="text-zinc-400">SYSTEM STATUS</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as any)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300"
                 >
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
@@ -704,375 +1267,716 @@ export default function MembersView({ user }: MembersViewProps) {
                   <option value="Pending">Pending</option>
                 </select>
               </div>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">HEIGHT (cm)</label>
+                <label className="text-zinc-400">HEIGHT (cm)</label>
                 <input
                   type="number"
                   value={height}
-                  onChange={(e) => setHeight(parseInt(e.target.value) || 0)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
+                  onChange={(e) => setHeight(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">WEIGHT (kg)</label>
+                <label className="text-zinc-400">WEIGHT (kg)</label>
                 <input
                   type="number"
                   value={weight}
-                  onChange={(e) => setWeight(parseInt(e.target.value) || 0)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
+                  onChange={(e) => setWeight(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400">BODY FAT %</label>
+                <input
+                  type="number"
+                  value={bodyFat}
+                  onChange={(e) => setBodyFat(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400">CHEST (cm)</label>
+                <input
+                  type="number"
+                  value={chest}
+                  onChange={(e) => setChest(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400">WAIST (cm)</label>
+                <input
+                  type="number"
+                  value={waist}
+                  onChange={(e) => setWaist(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400">HIP (cm)</label>
+                <input
+                  type="number"
+                  value={hip}
+                  onChange={(e) => setHip(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400">BICEPS (cm)</label>
+                <input
+                  type="number"
+                  value={biceps}
+                  onChange={(e) => setBiceps(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-zinc-400">THIGH (cm)</label>
+                <input
+                  type="number"
+                  value={thigh}
+                  onChange={(e) => setThigh(Number(e.target.value))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">EMERGENCY CONTACT NAME</label>
+                <label className="text-zinc-400">LOCKER NUMBER ALLOCATION</label>
                 <input
                   type="text"
-                  value={emergencyContactName}
-                  onChange={(e) => setEmergencyContactName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white"
+                  value={locker}
+                  onChange={(e) => setLocker(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">EMERGENCY CONTACT PHONE</label>
+                <label className="text-zinc-400">PT TRAINING PACKAGE</label>
                 <input
                   type="text"
-                  value={emergencyContactPhone}
-                  onChange={(e) => setEmergencyContactPhone(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-mono"
+                  value={ptPackage}
+                  onChange={(e) => setPtPackage(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">MEMBERSHIP PLAN</label>
-                <select
-                  value={activePlanId}
-                  onChange={(e) => setActivePlanId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="">No Active Plan</option>
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">ASSIGN PROFESSIONAL COACH</label>
-                <select
-                  value={trainerId}
-                  onChange={(e) => setTrainerId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-zinc-300"
-                >
-                  <option value="">Unassigned (Self Training)</option>
-                  {trainers.map(t => (
-                    <option key={t.id} value={t.id}>{t.fullName}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">RESIDENTIAL STREET ADDRESS</label>
+            <div className="space-y-1 text-xs">
+              <label className="text-zinc-400">TRAINER INSTRUCTION NOTES / FEEDBACK</label>
               <textarea
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white h-20 resize-none"
+                value={trainerNotes}
+                onChange={(e) => setTrainerNotes(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white h-20 resize-none focus:outline-none"
               ></textarea>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold font-mono tracking-wider text-zinc-400">AVATAR PICTURE LINK</label>
-              <input
-                type="text"
-                value={photo}
-                onChange={(e) => setPhoto(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs focus:border-amber-500 focus:outline-none text-white font-mono"
-              />
-            </div>
-
-            <div className="flex gap-4 pt-2">
+            <div className="flex gap-4 pt-4 border-t border-zinc-800">
               <button
                 type="button"
                 onClick={() => setActiveForm("LIST")}
-                className="flex-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-sm py-3 transition-all"
+                className="flex-1 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs py-3.5 transition"
               >
                 Go Back
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-sm py-3 transition-all shadow-lg shadow-amber-500/10"
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs py-3.5 transition"
               >
-                Update Member Record
+                Save Member Edits
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* 4. DETAILED PROFILE VIEW (Multi-Tab Overlay) */}
+      {/* 4. DETAILED PROFILE VIEW (12-Tab System Context) */}
       {activeForm === "PROFILE" && selectedMember && (
         <div className="space-y-6">
           
-          {/* Top Quick Actions bar */}
-          <div className="flex justify-between items-center">
+          {/* Top Return bar */}
+          <div className="flex justify-between items-center border-b border-zinc-850 pb-4">
             <button
                type="button"
                onClick={() => setActiveForm("LIST")}
-               className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 text-xs text-zinc-300 flex items-center gap-2 cursor-pointer"
+               className="px-4.5 py-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 text-xs text-zinc-300 flex items-center gap-2 cursor-pointer transition active:scale-95"
             >
-              <ArrowLeft className="w-4 h-4" /> Go back to listings
+              <ArrowLeft className="w-4 h-4" /> CRM Directory
             </button>
             <div className="flex gap-2">
+              <button 
+                onClick={handlePrintCard}
+                className="px-4.5 py-2 bg-zinc-900 border border-zinc-800 hover:border-amber-500 rounded-xl text-xs text-zinc-300 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-amber-500" /> Print Cards ID
+              </button>
               {user.role !== "TRAINER" && (
                 <button
                   type="button"
                   onClick={() => handleOpenEdit(selectedMember)}
-                  className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs hover:border-amber-500/50 text-amber-500 cursor-pointer"
+                  className="px-4.5 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs cursor-pointer transition active:scale-95 shadow-md shadow-amber-500/15"
                 >
-                  Edit Profile Card
+                  Adjust Profile Values
                 </button>
               )}
             </div>
           </div>
 
-          {/* Profile Header Visual Card */}
+          {/* CRITICAL MEDICAL WARNING BOX */}
+          {selectedMember.medicalWarnings && (
+            <div className="bg-red-950/20 border border-red-500/30 p-4.5 rounded-2xl flex items-start gap-3.5 text-red-200">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5 animate-bounce" />
+              <div>
+                <strong className="text-red-400 font-mono tracking-wider uppercase text-xs block">
+                  CRITICAL HEALTH / MEDICAL WARNING LOGGED
+                </strong>
+                <p className="text-xs mt-1 leading-relaxed">{selectedMember.medicalWarnings}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Profile Card Header */}
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl flex flex-col md:flex-row gap-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none"></div>
 
             <img
               referrerPolicy="no-referrer"
-              src={selectedMember.photo}
+              src={selectedMember.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"}
               alt={selectedMember.fullName}
-              className="w-24 h-24 md:w-32 md:h-32 rounded-2xl object-cover border-2 border-zinc-800 shrink-0 mx-auto md:mx-0"
+              className="w-24 h-24 md:w-32 md:h-32 rounded-2xl object-cover border-2 border-zinc-800 shrink-0 mx-auto md:mx-0 shadow-xl"
             />
 
-            <div className="flex-1 text-center md:text-left space-y-2">
-              <div className="flex justify-center md:justify-start items-center gap-3">
+            <div className="flex-grow space-y-2 text-center md:text-left">
+              <div className="flex flex-col md:flex-row md:items-center gap-2">
                 <h2 className="text-2xl font-black text-white">{selectedMember.fullName}</h2>
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono border ${
-                  selectedMember.status === "Active" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                  selectedMember.status === "Expired" ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                  "bg-zinc-800 text-zinc-400 border-zinc-700"
-                }`}>
-                  {selectedMember.status}
-                </span>
+                <div className="flex justify-center md:justify-start gap-1.5 mt-1 md:mt-0">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono border ${
+                    selectedMember.status === "Active" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                    selectedMember.status === "Expired" ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                    "bg-zinc-800 text-zinc-400 border-zinc-700"
+                  }`}>
+                    {selectedMember.status}
+                  </span>
+                  {selectedMember.activePlanId ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono bg-amber-500/5 border border-amber-500/20 text-amber-500">
+                      Paid Access
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono bg-zinc-800 text-zinc-400">
+                      Un-billed Account
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="text-xs text-zinc-400 font-medium font-mono">
-                MEMBER ID: <span className="text-amber-500 font-bold">{selectedMember.memberId}</span> • 
-                JOINED: <span className="text-zinc-300">{selectedMember.joiningDate}</span>
+              <div className="text-xs text-zinc-400 font-mono font-medium flex flex-wrap justify-center md:justify-start gap-3">
+                <span>ID: <strong className="text-amber-500 font-bold">{selectedMember.memberId}</strong></span>
+                <span>•</span>
+                <span>AGE: <strong className="text-zinc-300">{calculateAge(selectedMember.dob)} Yrs</strong></span>
+                <span>•</span>
+                <span>JOINED: <strong className="text-zinc-300">{selectedMember.joiningDate}</strong></span>
               </div>
 
-              {/* Biological fast details */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left pt-3 border-t border-zinc-800/60 mt-3 font-mono">
-                <div className="p-2.5 bg-zinc-950/60 rounded-xl border border-zinc-850">
-                  <span className="text-zinc-500 text-[9px] uppercase tracking-wider block">HEIGHT</span>
-                  <span className="text-sm font-bold text-white block mt-0.5">{selectedMember.height} cm</span>
+              {/* Biomarkers details fastbar */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-zinc-800/80 mt-3 font-mono text-left">
+                <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-850">
+                  <span className="text-zinc-500 text-[9px] block uppercase">HEIGHT/WEIGHT</span>
+                  <span className="text-[11.5px] font-bold text-white block mt-0.5">{selectedMember.height || 175}cm / {selectedMember.weight || 75}kg</span>
                 </div>
-                <div className="p-2.5 bg-zinc-950/60 rounded-xl border border-zinc-850">
-                  <span className="text-zinc-500 text-[9px] uppercase tracking-wider block">WEIGHT</span>
-                  <span className="text-sm font-bold text-white block mt-0.5">{selectedMember.weight} kg</span>
+                <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-850">
+                  <span className="text-zinc-500 text-[9px] block uppercase">BMI TARGET</span>
+                  <span className="text-[11.5px] font-bold text-amber-500 block mt-0.5">{selectedMember.bmi || "N/A"}</span>
                 </div>
-                <div className="p-2.5 bg-zinc-950/60 rounded-xl border border-zinc-850">
-                  <span className="text-zinc-500 text-[9px] uppercase tracking-wider block">BMI STATUS</span>
-                  <span className="text-sm font-black text-amber-500 block mt-0.5">{selectedMember.bmi}</span>
+                <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-850">
+                  <span className="text-zinc-500 text-[9px] block uppercase">BODY FAT %</span>
+                  <span className="text-[11.5px] font-bold text-white block mt-0.5">{selectedMember.bodyFat || "—"}%</span>
                 </div>
-                <div className="p-2.5 bg-zinc-950/60 rounded-xl border border-zinc-850">
-                  <span className="text-zinc-500 text-[9px] uppercase tracking-wider block">BLOOD GROUP</span>
-                  <span className="text-sm font-bold text-emerald-400 block mt-0.5">{selectedMember.bloodGroup || "O+"}</span>
+                <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-850">
+                  <span className="text-zinc-500 text-[9px] block uppercase">LOCKER REF</span>
+                  <span className="text-[11.5px] font-bold text-emerald-400 block mt-0.5 truncate">{selectedMember.locker || "No locker"}</span>
+                </div>
+                <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-850 col-span-2 sm:col-span-1">
+                  <span className="text-zinc-500 text-[9px] block uppercase">PT TRACK PACKAGE</span>
+                  <span className="text-[11.5px] font-bold text-zinc-300 block mt-0.5 truncate">{selectedMember.ptPackage || "Self Managed"}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Profile Tabs Navigation */}
-          <div className="flex border-b border-zinc-800 font-mono text-xs">
-            <button
-               type="button"
-               onClick={() => setActiveProfileTab("BIO")}
-               className={`py-3 px-5 border-b-2 font-bold cursor-pointer transition-all ${
-                 activeProfileTab === "BIO" ? "border-amber-500 text-amber-500 bg-amber-500/5" : "border-transparent text-zinc-400 hover:text-white"
-               }`}
-            >
-              Contact & Emergency Info
-            </button>
-
-            <button
-               type="button"
-               onClick={() => setActiveProfileTab("WORKOUT")}
-               className={`py-3 px-5 border-b-2 font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
-                 activeProfileTab === "WORKOUT" ? "border-amber-500 text-amber-500 bg-amber-500/5" : "border-transparent text-zinc-400 hover:text-white"
-               }`}
-            >
-              <Dumbbell className="w-3.5 h-3.5" /> Workout Matrix
-            </button>
-
-            <button
-               type="button"
-               onClick={() => setActiveProfileTab("DIET")}
-               className={`py-3 px-5 border-b-2 font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
-                 activeProfileTab === "DIET" ? "border-amber-500 text-amber-500 bg-amber-500/5" : "border-transparent text-zinc-400 hover:text-white"
-               }`}
-            >
-              <Heart className="w-3.5 h-3.5" /> Nutrition Diet
-            </button>
-
-            <button
-               type="button"
-               onClick={() => setActiveProfileTab("PAYMENTS")}
-               className={`py-3 px-5 border-b-2 font-bold cursor-pointer transition-all ${
-                 activeProfileTab === "PAYMENTS" ? "border-amber-500 text-amber-500 bg-amber-500/5" : "border-transparent text-zinc-400 hover:text-white"
-               }`}
-            >
-              Invoice Log ({selectedMember.payments?.length || 0})
-            </button>
+          {/* Expanded Profile Tabs list layout */}
+          <div className="flex border-b border-zinc-800 font-mono text-[11px] overflow-x-auto shrink-0 pb-1 gap-1">
+            {([
+              { key: "OVERVIEW", label: "Overview Detail" },
+              { key: "PERSONAL", label: "Personal Information" },
+              { key: "MEMBERSHIP", label: "Membership Lifecycle" },
+              { key: "ATTENDANCE", label: "Attendance Logs" },
+              { key: "PAYMENTS", label: "Payments Ledger" },
+              { key: "WORKOUT", label: "Workout Plans" },
+              { key: "DIET", label: "Diet Plans" },
+              { key: "PROGRESS", label: "Physical Measurements & BMI" },
+              { key: "PHOTOS", label: "Comparison Progress Photos" },
+              { key: "MEDICAL", label: "Medical Diagnostics" },
+              { key: "TRAINER_NOTES", label: "Coach Notes" },
+              { key: "TIMELINE", label: "Event Timeline" }
+            ] as { key: ProfileTab, label: string }[]).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveProfileTab(tab.key)}
+                className={`py-2 px-3 border-b-2 font-bold whitespace-nowrap transition cursor-pointer ${
+                  activeProfileTab === tab.key ? "border-amber-500 text-amber-500 bg-amber-500/5 rounded-t-lg" : "border-transparent text-zinc-400 hover:text-white"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {/* Tab Contents */}
+          {/* Tab Screen Content */}
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
             
-            {/* T1: Contact and Emergency */}
-            {activeProfileTab === "BIO" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* TAB A: OVERVIEW */}
+            {activeProfileTab === "OVERVIEW" && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-zinc-300">
+                <div className="space-y-4 md:col-span-2">
+                  <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase border-b border-zinc-800 pb-2">
+                    Athletic Status & Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                    <div className="p-3 bg-zinc-950 border border-zinc-850 rounded-xl">
+                      <span className="text-zinc-500 block text-[9px]">ACTIVE MEMBERSHIP ACCESS</span>
+                      <strong className="text-white text-sm block mt-1">{selectedMember.planName || "No Associated Plan"}</strong>
+                    </div>
+                    <div className="p-3 bg-zinc-950 border border-zinc-850 rounded-xl">
+                      <span className="text-zinc-500 block text-[9px]">ASSIGNED PROFESSIONAL COACH</span>
+                      <strong className="text-amber-500 text-sm block mt-1">{selectedMember.trainerName || "Self Training Core"}</strong>
+                    </div>
+                    <div className="p-3 bg-zinc-950 border border-zinc-850 rounded-xl">
+                      <span className="text-zinc-500 block text-[9px]">EXPIRATION MATRIX ENDS</span>
+                      <strong className="text-red-400 text-sm block mt-1">{selectedMember.endDate || "Unlimited Session"}</strong>
+                    </div>
+                    <div className="p-3 bg-zinc-950 border border-zinc-850 rounded-xl">
+                      <span className="text-zinc-500 block text-[9px]">LATEST TRAINER STATS COHORTS</span>
+                      <strong className="text-white text-sm block mt-1 italic">"{selectedMember.fitnessGoal || "Under development"}"</strong>
+                    </div>
+                  </div>
+
+                  {/* Dynamic security QR code validation info card */}
+                  <div className="bg-zinc-950 border border-zinc-850 p-4.5 rounded-2xl space-y-2">
+                    <div className="font-bold text-white uppercase text-[10px] tracking-wider font-mono flex items-center gap-1.5">
+                      <Shield className="w-4 h-4 text-amber-500" /> Dynamic Secure Scanning Cryptographic Token
+                    </div>
+                    <p className="text-[11px] text-zinc-400 pb-2">
+                      Dynamic check-in tokens are salted securely on databases to prevent unauthorized profile copies. 
+                      Scanned records update attendance metrics automatically.
+                    </p>
+                    <div className="bg-zinc-900 p-2.5 rounded-xl border border-zinc-800 text-[11px] font-mono break-all text-zinc-400">
+                      SECURE QR SIGNATURE: <span className="text-yellow-500">{memberQrCode || "STANDBY_HASH_GENERATION"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Membership card Preview column */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold tracking-wider font-mono text-zinc-400 uppercase">Primary Demographics</h3>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between py-2 border-b border-zinc-800">
-                      <span className="text-zinc-500">Email Address</span>
-                      <span className="text-white font-medium">{selectedMember.email}</span>
+                  <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase border-b border-zinc-800 pb-2 text-center">
+                    Printable Card
+                  </h3>
+                  
+                  {/* Visual card itself */}
+                  <div className="bg-zinc-950 border border-amber-500/20 p-5 rounded-3xl space-y-4 shadow-2xl relative overflow-hidden text-zinc-300 font-mono">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl"></div>
+                    
+                    <div className="flex justify-between items-start border-b border-zinc-850 pb-2.5">
+                      <div>
+                        <div className="text-[10px] font-bold text-amber-500 uppercase">GYMFLOW PREMIUM</div>
+                        <div className="font-bold text-xs text-white uppercase mt-1 truncate max-w-[150px]">{selectedMember.fullName}</div>
+                        <div className="text-[9px] text-zinc-500 mt-1">ID: {selectedMember.memberId}</div>
+                      </div>
+                      <img 
+                        src={selectedMember.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"} 
+                        className="w-10 h-10 rounded-lg object-cover border border-zinc-800"
+                        referrerPolicy="no-referrer"
+                      />
                     </div>
-                    <div className="flex justify-between py-2 border-b border-zinc-800">
-                      <span className="text-zinc-500">Contact Number</span>
-                      <span className="text-white font-medium">{selectedMember.phone || "N/A"}</span>
+
+                    <div className="space-y-1 text-[9.5px]">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Access Tier:</span>
+                        <span className="text-white font-bold">{selectedMember.planName || "Active Access"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-505">Card Expiry:</span>
+                        <span className="text-red-400 font-bold">{selectedMember.endDate || "Unlimited"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-505">Emergency:</span>
+                        <span className="text-zinc-300">{selectedMember.emergencyContactPhone || "N/A"}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-zinc-800">
-                      <span className="text-zinc-500">Birthday (D.O.B)</span>
-                      <span className="text-white font-mono">{selectedMember.dob || "N/A"}</span>
+
+                    <div className="flex justify-center pt-2.5 border-t border-zinc-900">
+                      <div className="bg-white p-2 rounded-lg text-black font-black text-[10px] uppercase text-center w-full block">
+                        [ SECURE AUTH QR CODE ]
+                      </div>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-zinc-800">
-                      <span className="text-zinc-500">Residence address</span>
-                      <span className="text-white font-medium">{selectedMember.address || "Street Not Provided"}</span>
+                  </div>
+
+                  <button 
+                    onClick={handlePrintCard}
+                    className="w-full py-2.5 bg-amber-500 font-black text-black hover:bg-amber-400 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4 stroke-[2.5]" /> Launch Print window
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB B: PERSONAL INFORMATION */}
+            {activeProfileTab === "PERSONAL" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-zinc-300">
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold tracking-wider font-mono text-zinc-400 uppercase border-b border-zinc-800 pb-1">
+                    Athlete Identity Setup
+                  </h3>
+                  <div className="space-y-2.5">
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-500">Biological full name</span>
+                      <strong className="text-white text-xs">{selectedMember.fullName}</strong>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-500">Primary contact email</span>
+                      <span className="text-white">{selectedMember.email}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-500">Telephone address</span>
+                      <span className="text-white font-mono">{selectedMember.phone || "—"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-500">Gender code</span>
+                      <span className="text-white">{selectedMember.gender}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-500">Birthday date of birth</span>
+                      <span className="text-white font-mono">{selectedMember.dob} ({calculateAge(selectedMember.dob)} Yrs Age)</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-505">Occupation status</span>
+                      <span className="text-white">{selectedMember.occupation || "Commercial Athlete / Unspecified"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-zinc-850">
+                      <span className="text-zinc-505">Blood Group Biomarker</span>
+                      <span className="text-emerald-400 font-bold font-mono">{selectedMember.bloodGroup || "O+"}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold tracking-wider font-mono text-red-400 uppercase flex items-center gap-1.5 animate-pulse">
-                    <ShieldAlert className="w-4 h-4 text-red-400" /> Emergency contacts guard
+                  <h3 className="text-xs font-bold tracking-wider font-mono text-red-400 uppercase border-b border-zinc-800 pb-1">
+                    Emergency Guardian Contacts
                   </h3>
-                  <div className="space-y-2 text-xs bg-red-950/20 p-4 border border-red-950 rounded-2xl">
-                    <div className="flex justify-between py-1.5">
-                      <span className="text-zinc-500">Contact Name</span>
-                      <span className="text-white font-bold">{selectedMember.emergencyContactName || "Not Recorded"}</span>
+                  <div className="p-4 bg-red-950/20 border border-red-950 rounded-2xl space-y-2.5">
+                    <div className="flex justify-between py-1 border-b border-red-950/25">
+                      <span className="text-zinc-500 text-[10px] font-mono">CONTACT GUARDIAN NAME</span>
+                      <strong className="text-white text-xs">{selectedMember.emergencyContactName || "Not Provided"}</strong>
                     </div>
-                    <div className="flex justify-between py-1.5">
-                      <span className="text-zinc-500">Guardian relationship</span>
-                      <span className="text-zinc-300">Spouse (Family Primary)</span>
+                    <div className="flex justify-between py-1">
+                      <span className="text-zinc-550 text-[10px] font-mono">GUARDIAN PHONE</span>
+                      <strong className="text-red-400 font-mono text-xs">{selectedMember.emergencyContactPhone || "N/A"}</strong>
                     </div>
-                    <div className="flex justify-between py-1.5">
-                      <span className="text-zinc-500">Emergency Phone</span>
-                      <span className="text-red-400 font-bold font-mono">{selectedMember.emergencyContactPhone || "N/A"}</span>
-                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <span className="text-zinc-500 block">Home street address:</span>
+                    <p className="p-3 bg-zinc-950 rounded-xl border border-zinc-850 text-white italic">
+                      {selectedMember.address || "No primary street details stored."}
+                    </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* T2: WORKOUT PLAN CHECKLIST */}
-            {activeProfileTab === "WORKOUT" && (
-              <div className="space-y-5">
-                <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-                  <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-white">Daily Workout Exercises</h3>
-                  <span className="text-[10px] text-zinc-400 font-mono">Assigned by Zara Thorne Coach</span>
-                </div>
-                
-                {!selectedMember.workoutPlan ? (
-                  <div className="text-center py-10 space-y-3">
-                    <p className="text-zinc-500 text-xs font-mono">No physical workout exercises recorded yet.</p>
-                    {user.role !== "MEMBER" && (
-                      <p className="text-[11px] text-zinc-400">Instruct this member's representative to define routines under the Workout & Diet manager.</p>
-                    )}
+            {/* TAB C: MEMBERSHIP TRANSITIONS */}
+            {activeProfileTab === "MEMBERSHIP" && (
+              <div className="space-y-6 text-xs text-zinc-300">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-zinc-950 p-5 border border-zinc-850 rounded-3xl">
+                  <div>
+                    <span className="text-zinc-500 text-[9px] font-bold font-mono tracking-wider block uppercase">CURRENT PLAN ACTIVE MEMBERSHIP STATUS</span>
+                    <strong className="text-white text-base block mt-1">{selectedMember.planName || "No Plan assigned / Inactive"}</strong>
+                    <div className="text-zinc-400 text-[10px] mt-1 font-mono">
+                      Validity Date: {selectedMember.startDate || "N/A"} to {selectedMember.endDate || "N/A"}
+                    </div>
                   </div>
+
+                  {user.role !== "TRAINER" && (
+                    <div className="flex flex-wrap gap-2">
+                      <button 
+                        onClick={() => {
+                          setRenewPlanId(selectedMember.activePlanId || "");
+                          setRenewPrice("");
+                          setIsRenewOpen(true);
+                        }}
+                        className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl"
+                      >
+                        Renew Plan
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setRenewPlanId("");
+                          setRenewPrice("");
+                          setIsUpgradeOpen(true);
+                        }}
+                        className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl"
+                      >
+                        Upgrade / Change Plan
+                      </button>
+                      <button 
+                        onClick={handleFreeze}
+                        className="px-3.5 py-2 bg-zinc-90 w-24 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-yellow-500 font-bold"
+                      >
+                        Freeze Card
+                      </button>
+                      <button 
+                        onClick={handleCancel}
+                        className="px-3.5 py-2 bg-zinc-90 w-24 bg-zinc-900 hover:bg-red-950/20 hover:text-red-400 border border-zinc-800 hover:border-red-500/20 rounded-xl text-zinc-400 font-bold"
+                      >
+                        Cancel Plan
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Popups forms */}
+                {isRenewOpen && (
+                  <form onSubmit={handleRenewSubmit} className="p-4 bg-zinc-950 border border-emerald-500/20 rounded-2xl space-y-4 max-w-md">
+                    <h4 className="font-mono text-emerald-400 font-bold uppercase text-[10px]">Renew Membership Plan Access</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-zinc-500 block mb-1">SELECT PLAN</label>
+                        <select 
+                          value={renewPlanId} 
+                          onChange={(e) => setRenewPlanId(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl"
+                        >
+                          {plans.map(p => (
+                            <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">PRICE PAID ($)</label>
+                        <input 
+                          type="number"
+                          placeholder="e.g. 199" 
+                          value={renewPrice}
+                          onChange={(e) => setRenewPrice(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setIsRenewOpen(false)} className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-lg">Cancel</button>
+                      <button type="submit" className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-lg">Process Renewal</button>
+                    </div>
+                  </form>
+                )}
+
+                {isUpgradeOpen && (
+                  <form onSubmit={handleUpgradeSubmit} className="p-4 bg-zinc-950 border border-amber-500/20 rounded-2xl space-y-4 max-w-md">
+                    <h4 className="font-mono text-amber-500 font-bold uppercase text-[10px]">Upgrade / Change Membership</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-zinc-500 block mb-1">CHOOSE NEW PLAN</label>
+                        <select 
+                          value={renewPlanId} 
+                          onChange={(e) => setRenewPlanId(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl"
+                        >
+                          <option value="">Select target plan...</option>
+                          {plans.map(p => (
+                            <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">PRICE Billed ($)</label>
+                        <input 
+                          type="number" 
+                          value={renewPrice}
+                          placeholder="e.g. 299"
+                          onChange={(e) => setRenewPrice(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setIsUpgradeOpen(false)} className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-lg font-bold">Cancel</button>
+                      <button type="submit" className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-lg">Process Upgrade</button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Membership historical ledger logs */}
+                <div className="space-y-3.5 pt-2">
+                  <h4 className="text-xs font-black text-white font-mono uppercase tracking-widest">Membership Standing Status Logs Hierarchy</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left bg-zinc-950 border border-zinc-850 rounded-2xl text-[11px] font-mono">
+                      <thead>
+                        <tr className="border-b border-zinc-900 text-zinc-500">
+                          <th className="p-3">Plan Name</th>
+                          <th className="p-3">Valid Range</th>
+                          <th className="p-3">Price Paid</th>
+                          <th className="p-3">Standing status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                        {membershipHistory.length === 0 ? (
+                          <tr><td colSpan={4} className="p-3 text-center text-zinc-650">No membership changes on record.</td></tr>
+                        ) : (
+                          membershipHistory.map((h, idx) => (
+                            <tr key={idx} className="hover:bg-zinc-900/60">
+                              <td className="p-3 font-bold text-white">{h.planName || "Core Access"}</td>
+                              <td className="p-3 text-zinc-400">{h.startDate} to {h.endDate}</td>
+                              <td className="p-3 font-bold text-emerald-400">${h.pricePaid}</td>
+                              <td className="p-3"><span className="text-[10px] font-black uppercase text-amber-500">{h.status || "Completed"}</span></td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB D: ATTENDANCE */}
+            {activeProfileTab === "ATTENDANCE" && (
+              <div className="space-y-4 text-xs">
+                <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase border-b border-zinc-800 pb-2">
+                  Daily Clock-In & Check-Out Presence Logs
+                </h3>
+                {selectedMember.attendance?.length === 0 ? (
+                  <div className="text-center py-10 text-zinc-500 font-mono">No presence logs logged yet for this member.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left bg-zinc-950 border border-zinc-850 rounded-2xl font-mono text-[11.5px]">
+                      <thead>
+                        <tr className="border-b border-zinc-900 text-zinc-500">
+                          <th className="p-3">Active Date</th>
+                          <th className="p-3">Check-In Duration</th>
+                          <th className="p-3">Departure Check-Out</th>
+                          <th className="p-3">Activity Notes / Focus</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                        {selectedMember.attendance?.map((a: any, idx: number) => (
+                          <tr key={idx}>
+                            <td className="p-3 font-bold">{a.date}</td>
+                            <td className="p-3 text-emerald-400 font-bold">{a.timeIn}</td>
+                            <td className="p-3 text-zinc-500">{a.timeOut || "Active Room Now"}</td>
+                            <td className="p-3 text-zinc-400 italic font-sans">{a.remarks}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB E: PAYMENTS */}
+            {activeProfileTab === "PAYMENTS" && (
+              <div className="space-y-4 text-xs">
+                <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase border-b border-zinc-800 pb-2">
+                  Acquired Invoices & Cleared Financial Receipts
+                </h3>
+                {selectedMember.payments?.length === 0 ? (
+                  <div className="text-center py-10 text-zinc-500 font-mono">No invoice bills generated.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedMember.payments?.map((pay: any) => (
+                      <div key={pay.id} className="p-4 bg-zinc-950 border border-zinc-850 rounded-2xl flex justify-between items-center font-mono">
+                        <div>
+                          <div className="text-xs font-black text-white">{pay.type}</div>
+                          <span className="text-[10px] text-zinc-500">REF: {pay.id} • Due: {pay.dueDate || "Paid"}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-emerald-400 font-black">${pay.amount}</div>
+                          <button 
+                            onClick={() => alert(`Cleard Payment Invoice receipt:\nItem: ${pay.type}\nCleared Sum: $${pay.amount}\nMode: Bank Wire Trans`)}
+                            className="text-[9px] text-amber-500 hover:underline mt-1 cursor-pointer block"
+                          >
+                            Download Receipt
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB F: WORKOUT PLANS */}
+            {activeProfileTab === "WORKOUT" && (
+              <div className="space-y-4 text-xs">
+                <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                  <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white">Coach Assigned Workout Plan Sheets</h3>
+                </div>
+                {!selectedMember.workoutPlan ? (
+                  <div className="text-center py-10 text-zinc-500 font-mono">No customized exercise sheets active.</div>
                 ) : (
                   <div className="space-y-3">
                     {selectedMember.workoutPlan.exercises?.map((ex: any, idx: number) => (
-                      <div key={idx} className="p-4 bg-zinc-950 rounded-xl border border-zinc-850 flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <h4 className="font-extrabold text-sm text-white flex items-center gap-1.5">
-                            <span className="w-5 h-5 bg-amber-500/10 text-amber-500 rounded text-center text-xs font-mono inline-flex items-center justify-center">{idx + 1}</span>
-                            {ex.name}
-                          </h4>
-                          <span className="inline-block text-xs text-amber-500/80 font-mono">
-                            Sets: {ex.sets} • Reps: <span className="text-white">{ex.reps}</span> • Duration: {ex.durationMin} mins
-                          </span>
-                          <span className="block text-xs text-zinc-400 italic font-sans mt-1">Goal notes: {ex.notes}</span>
+                      <div key={idx} className="p-4 bg-zinc-950 rounded-xl border border-zinc-850 flex items-start justify-between">
+                        <div>
+                          <h4 className="font-bold text-white text-sm">{ex.name}</h4>
+                          <span className="text-xs text-amber-500 font-mono block mt-1">Sets: {ex.sets} | Reps: {ex.reps} | Session Time: {ex.durationMin} Min</span>
+                          <p className="text-zinc-450 text-[11px] font-sans mt-1.5 italic">Target: {ex.notes}</p>
                         </div>
-                        <span className="text-[10px] font-mono py-1 px-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 flex items-center gap-1 shrink-0">
-                          <Check className="w-3.5 h-3.5 text-emerald-500" /> Active Standard
-                        </span>
+                        <span className="px-2 py-0.5 bg-zinc-900 border border-zinc-800 rounded font-mono text-[9px] font-black text-emerald-400 uppercase">✓ ACTIVE</span>
                       </div>
                     ))}
-                    <div className="p-3 bg-zinc-950 border border-zinc-850 rounded-xl text-xs text-zinc-400 leading-relaxed max-w-xl">
-                      <strong>Overall notes:</strong> {selectedMember.workoutPlan.notes || "Standard lifting routine."}
-                    </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* T3: NUTRITION DIET */}
+            {/* TAB G: DIET PLANS */}
             {activeProfileTab === "DIET" && (
-              <div className="space-y-5">
-                <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-                  <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-white">Daily Meal targets</h3>
-                  <span className="text-xs text-zinc-400 font-mono">Approved targets</span>
-                </div>
-
+              <div className="space-y-4 text-xs">
+                <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-white border-b border-zinc-8s0 pb-1.5">Diet Plan Checklist</h3>
                 {!selectedMember.dietPlan ? (
-                  <div className="text-center py-10">
-                    <p className="text-zinc-500 text-xs font-mono">Physical nutrition chart not published for this profile.</p>
-                  </div>
+                  <div className="text-center py-10 text-zinc-500 font-mono">No published physical diet sheets.</div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="md:col-span-2 space-y-4">
-                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850 text-xs">
-                        <strong className="text-amber-500 block mb-1">BREAKFAST</strong>
-                        <p className="text-zinc-300">{selectedMember.dietPlan.meals?.breakfast || "N/A"}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2 space-y-3.5">
+                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850">
+                        <span className="text-amber-500 block font-bold text-[10px]">BREAKFAST MENU</span>
+                        <p className="text-zinc-300 mt-1">{selectedMember.dietPlan.meals?.breakfast || "Standard Oatmeal"}</p>
                       </div>
-                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850 text-xs">
-                        <strong className="text-emerald-400 block mb-1">LUNCH</strong>
-                        <p className="text-zinc-300">{selectedMember.dietPlan.meals?.lunch || "N/A"}</p>
+                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850">
+                        <span className="text-emerald-400 block font-bold text-[10px]">LUNCH MENU</span>
+                        <p className="text-zinc-300 mt-1">{selectedMember.dietPlan.meals?.lunch || "Chicken Breast with Broccoli"}</p>
                       </div>
-                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850 text-xs">
-                        <strong className="text-amber-500 block mb-1">DINNER LATE SUPPER</strong>
-                        <p className="text-zinc-300">{selectedMember.dietPlan.meals?.dinner || "N/A"}</p>
-                      </div>
-                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850 text-xs">
-                        <strong className="text-zinc-400 block mb-1">SNACKS & SHAKES</strong>
-                        <p className="text-zinc-300">{selectedMember.dietPlan.meals?.snacks || "N/A"}</p>
+                      <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850">
+                        <span className="text-amber-500 block font-bold text-[10px]">DINNER MENU</span>
+                        <p className="text-zinc-300 mt-1">{selectedMember.dietPlan.meals?.dinner || "Salmon Roast and Salad"}</p>
                       </div>
                     </div>
-
-                    <div className="space-y-4">
-                      <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl space-y-3 font-mono">
-                        <h4 className="text-xs text-white font-bold uppercase tracking-wider">Macros target</h4>
-                        <div className="flex justify-between py-1 border-b border-zinc-900 text-xs">
-                          <span className="text-zinc-500">CALORIES</span>
-                          <span className="text-white font-bold">{selectedMember.dietPlan.targets?.calories || 0} kcal</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-zinc-900 text-xs">
-                          <span className="text-zinc-500">PROTEIN</span>
-                          <span className="text-emerald-400 font-bold">{selectedMember.dietPlan.targets?.proteinGrams || 0}g</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-zinc-900 text-xs">
-                          <span className="text-zinc-500">WATER</span>
-                          <span className="text-blue-400 font-bold">{selectedMember.dietPlan.targets?.waterIntakeLiters || 0} Liters</span>
-                        </div>
+                    <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl font-mono text-zinc-400 space-y-3 block">
+                      <strong>Target Macros split:</strong>
+                      <div className="flex justify-between text-xs py-1 border-b border-zinc-900">
+                        <span>CALORIES</span>
+                        <span>{selectedMember.dietPlan.targets?.calories || 2800} kcal</span>
+                      </div>
+                      <div className="flex justify-between text-xs py-1 border-b border-zinc-900">
+                        <span>PROTEIN</span>
+                        <span>{selectedMember.dietPlan.targets?.proteinGrams || 180} g</span>
+                      </div>
+                      <div className="flex justify-between text-xs py-1">
+                        <span>WATER</span>
+                        <span>{selectedMember.dietPlan.targets?.waterIntakeLiters || 4} L</span>
                       </div>
                     </div>
                   </div>
@@ -1080,53 +1984,311 @@ export default function MembersView({ user }: MembersViewProps) {
               </div>
             )}
 
-            {/* T4: PAYMENTS HISTORY AND INVOICING CARD */}
-            {activeProfileTab === "PAYMENTS" && (
-              <div className="space-y-5">
-                <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-                  <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-white">Full Invoiced Ledger</h3>
-                  <span className="text-xs text-zinc-400 font-mono">All transaction records</span>
+            {/* TAB H: PHYSICAL MEASUREMENTS & BMI */}
+            {activeProfileTab === "PROGRESS" && (
+              <div className="space-y-6 text-xs text-zinc-300">
+                <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
+                  <div>
+                    <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase">Measurements History Logs</h3>
+                    <span className="text-[10px] text-zinc-500">Record weight, chest, fat ratios and view visual trends over date times.</span>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setLogWeight(selectedMember.weight || 75);
+                      setLogBodyFat(selectedMember.bodyFat || 15);
+                      setLogChest(selectedMember.chest || 0);
+                      setLogWaist(selectedMember.waist || 0);
+                      setLogHip(selectedMember.hip || 0);
+                      setLogBiceps(selectedMember.biceps || 0);
+                      setLogThigh(selectedMember.thigh || 0);
+                      setIsLogProgressOpen(true);
+                    }}
+                    className="px-4.5 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl transition cursor-pointer active:scale-95"
+                  >
+                    Record Measure Log
+                  </button>
                 </div>
-                
-                {!selectedMember.payments || selectedMember.payments.length === 0 ? (
-                  <div className="text-center py-10 text-zinc-500 text-xs font-mono">No invoice records found.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedMember.payments.map((p: any) => (
-                      <div key={p.id} className="p-4 bg-zinc-950 rounded-xl border border-zinc-850 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                        <div className="space-y-1">
-                          <div className="text-xs font-bold text-white flex items-center gap-2">
-                            {p.type} 
-                            <span className={`text-[9px] font-mono px-2 py-0.5 rounded uppercase font-bold ${
-                              p.status === "Paid" ? "bg-emerald-500/10 text-emerald-400" :
-                              p.status === "Pending" ? "bg-amber-500/10 text-amber-500" : "bg-red-500/10 text-red-500"
-                            }`}>
-                              {p.status}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-zinc-400 font-mono">
-                            REF ID: {p.id} • Mode: {p.paymentMode} • Due: {p.dueDate || "Immediate"}
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-4 shrink-0 font-mono">
-                          <div className="text-right">
-                            <span className="text-xs text-zinc-500 block">AMOUNT Billed</span>
-                            <span className="text-sm font-bold text-white">${p.amount}</span>
+                {isLogProgressOpen && (
+                  <form onSubmit={handleLogProgress} className="p-5 bg-zinc-950 border border-amber-500/15 rounded-3xl space-y-4 max-w-xl">
+                    <h4 className="font-bold text-amber-500 font-mono tracking-widest uppercase text-[10px]">Record Measurements Log Entry</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-zinc-500 block mb-1">WEIGHT (kg)</label>
+                        <input type="number" value={logWeight} onChange={(e) => setLogWeight(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">BODY FAT %</label>
+                        <input type="number" value={logBodyFat} onChange={(e) => setLogBodyFat(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">CHEST (cm)</label>
+                        <input type="number" value={logChest} onChange={(e) => setLogChest(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">WAIST (cm)</label>
+                        <input type="number" value={logWaist} onChange={(e) => setLogWaist(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">HIP (cm)</label>
+                        <input type="number" value={logHip} onChange={(e) => setLogHip(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">BICEPS (cm)</label>
+                        <input type="number" value={logBiceps} onChange={(e) => setLogBiceps(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-zinc-500 block mb-1">THIGH (cm)</label>
+                        <input type="number" value={logThigh} onChange={(e) => setLogThigh(Number(e.target.value))} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-zinc-500 block mb-1">LOG REMARKS</label>
+                      <input type="text" placeholder="Physical progress details..." value={logProgressNotes} onChange={(e) => setLogProgressNotes(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 p-2 text-white rounded-xl" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setIsLogProgressOpen(false)} className="flex-1 py-2 bg-zinc-900 text-zinc-300 rounded-lg">Cancel</button>
+                      <button type="submit" className="flex-1 py-2 bg-amber-500 font-extrabold text-black rounded-lg">Log Record</button>
+                    </div>
+                  </form>
+                )}
+
+                {/* VISUAL RECHARTS GRAPH FOR WEIGHT & BMI SLOPES */}
+                {progressHistory.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-2xl space-y-2">
+                      <strong className="text-xs text-white uppercase block font-mono">Weight Slope Trend (kg)</strong>
+                      <div className="h-44">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={progressHistory}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                            <XAxis dataKey="date" stroke="#52525b" fontSize={10} />
+                            <YAxis stroke="#52525b" fontSize={10} width={25} domain={['dataMin - 5', 'dataMax + 5']} />
+                            <Tooltip contentStyle={{ backgroundColor: "#0c0c0e", borderColor: "#27272a", color: "#fff" }} />
+                            <Area type="monotone" dataKey="weight" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} strokeWidth={2} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-2xl space-y-2">
+                      <strong className="text-xs text-white uppercase block font-mono">Weight Body Fat Density Ratio %</strong>
+                      <div className="h-44">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={progressHistory}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                            <XAxis dataKey="date" stroke="#52525b" fontSize={10} />
+                            <YAxis stroke="#52525b" fontSize={10} width={25} />
+                            <Tooltip contentStyle={{ backgroundColor: "#0c0c0e", borderColor: "#27272a", color: "#fff" }} />
+                            <Area type="monotone" dataKey="bodyFat" stroke="#10b981" fill="#10b981" fillOpacity={0.1} strokeWidth={2} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Measurements logs list table details */}
+                <div className="space-y-3">
+                  <span className="font-bold text-white font-mono block text-[10px] uppercase">Measurements Audit Rows</span>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left bg-zinc-950 border border-zinc-850 rounded-2xl text-[11px] font-mono">
+                      <thead>
+                        <tr className="border-b border-zinc-900 text-zinc-500">
+                          <th className="p-3">Logged Date</th>
+                          <th className="p-3">Weight (kg)</th>
+                          <th className="p-3">BMI Index</th>
+                          <th className="p-3">Fat Ratio %</th>
+                          <th className="p-3">Chest (cm)</th>
+                          <th className="p-3">Waist/Hip</th>
+                          <th className="p-3">Biceps / Thigh</th>
+                          <th className="p-3 max-w-[120px]">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900 text-zinc-300">
+                        {progressHistory.length === 0 ? (
+                          <tr><td colSpan={8} className="p-3 text-center text-zinc-650">No measurements logged for this member.</td></tr>
+                        ) : (
+                          progressHistory.map((row: any) => (
+                            <tr key={row.id}>
+                              <td className="p-3 font-bold text-white">{row.date}</td>
+                              <td className="p-3">{row.weight} kg</td>
+                              <td className="p-3 text-amber-500 font-bold">{row.bmi}</td>
+                              <td className="p-3 text-emerald-400">{row.bodyFat}%</td>
+                              <td className="p-3">{row.chest} cm</td>
+                              <td className="p-3">{row.waist} / {row.hip}</td>
+                              <td className="p-3">{row.biceps}cm / {row.thigh}cm</td>
+                              <td className="p-3 italic text-zinc-400 font-sans max-w-[140px] truncate">{row.notes || "—"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB I: COMPARISON PROGRESS PHOTOS */}
+            {activeProfileTab === "PHOTOS" && (
+              <div className="space-y-6 text-xs text-zinc-300">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-950 p-4.5 border border-zinc-850 rounded-2xl">
+                  <div>
+                    <h3 className="text-sm font-black text-white font-mono uppercase">Athlete Comparison Visuals</h3>
+                    <p className="text-zinc-500 text-[11px] mt-0.5">Upload categorized photos (Front, Side, Back) and display comparisons.</p>
+                  </div>
+                  
+                  {/* Upload Form inline block */}
+                  <form onSubmit={handleUploadProgressPhoto} className="flex flex-wrap gap-2 text-xs">
+                    <select 
+                      value={photoCategory} 
+                      onChange={(e: any) => setPhotoCategory(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-800 p-2 rounded-xl text-white outline-none font-mono text-[11px]"
+                    >
+                      <option value="Front">Front Position</option>
+                      <option value="Side">Side Position</option>
+                      <option value="Back">Back Position</option>
+                    </select>
+                    
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={handleProgressPhotoChange}
+                      className="block w-40 text-[11px] text-zinc-500 file:mr-4 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[11px] file:bg-zinc-800 file:text-zinc-300 file:cursor-pointer"
+                    />
+
+                    <button 
+                      type="submit" 
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5 stroke-[2.5]" /> Upload Comparison photo
+                    </button>
+                  </form>
+                </div>
+
+                {/* Stored Comparison Grid visualizer */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2">
+                  {["Front", "Side", "Back"].map((category) => {
+                    const photos = photosList.filter(p => p.category === category);
+                    const beforePhoto = photos[0]; // Oldest uploaded
+                    const afterPhoto = photos[photos.length - 1]; // Newest uploaded
+
+                    return (
+                      <div key={category} className="bg-zinc-950/50 border border-zinc-850 p-4.5 rounded-3xl space-y-3.5">
+                        <span className="font-mono text-xs text-amber-500 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1.5">
+                          {category} Comparison Position
+                        </span>
+
+                        {photos.length === 0 ? (
+                          <div className="text-center py-10 text-zinc-650 font-mono text-[10px] uppercase">
+                            No uploads inside this category
                           </div>
-                          {p.status === "Paid" && (
-                            <button
-                              type="button"
-                              className="px-3 py-1.5 bg-zinc-90  text-[11px] bg-zinc-900 border border-zinc-800 hover:border-amber-500 rounded text-amber-500 font-bold active:scale-95 transition-all cursor-pointer"
-                              onClick={() => {
-                                // Trigger printable receipt modal in parent or alert receipt simply
-                                alert(`INVOICE RECEIPT\n-----------------------\nInvoice No: INV-2026-${p.id.replace('pay-','')}\nAccount: ${selectedMember.fullName}\nItem: ${p.type}\nPaid via: ${p.paymentMode}\nAmount: $${p.amount}\nStatus: PAID STAMPED\n\nTransaction cleared on: ${p.paymentDate || "2026-06-21"}`);
-                              }}
-                            >
-                              Print receipt
-                            </button>
-                          )}
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-mono">
+                              <div className="space-y-1">
+                                <span className="bg-zinc-900 py-0.5 px-2 text-zinc-400 rounded-md block border border-zinc-800">BEFORE</span>
+                                <img src={beforePhoto.photoPath} className="w-full h-32 object-cover rounded-xl border border-zinc-800" referrerPolicy="no-referrer" />
+                                <span className="text-zinc-500 block">{beforePhoto.date}</span>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="bg-emerald-500/10 py-0.5 px-2 text-emerald-400 rounded-md block border border-emerald-500/10">AFTER</span>
+                                <img src={afterPhoto.photoPath} className="w-full h-32 object-cover rounded-xl border border-zinc-800" referrerPolicy="no-referrer" />
+                                <span className="text-zinc-500 block">{afterPhoto.date}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB J: MEDICAL DIAGNOSTICS */}
+            {activeProfileTab === "MEDICAL" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-zinc-300">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase border-b border-zinc-800 pb-1.5 flex items-center gap-2">
+                    <ShieldAlert className="w-4.5 h-4.5 text-amber-500" /> Active Medical Diagnostics
+                  </h3>
+                  <div className="space-y-3 text-xs font-sans">
+                    <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850">
+                      <span className="text-zinc-500 block font-mono font-bold uppercase text-[9px] tracking-wider">DIAGNOSED MEDICAL CONDITIONS</span>
+                      <p className="text-zinc-200 mt-1 font-medium">{selectedMember.medicalConditions || "No chronic diagnosed conditions reported."}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-850">
+                      <span className="text-zinc-500 block font-mono font-bold uppercase text-[9px] tracking-wider">PREVIOUS INJURIES / PHYSICAL LIMITS</span>
+                      <p className="text-zinc-200 mt-1 font-medium">{selectedMember.injuries || "None declared or active."}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black text-red-500 font-mono tracking-wider uppercase border-b border-zinc-800 pb-1.5 flex items-center gap-2">
+                    <ShieldAlert className="w-4.5 h-4.5 text-red-500" /> Critical Warning Diagnostics
+                  </h3>
+                  <div className="space-y-3 text-xs font-sans">
+                    <div className="p-3 bg-red-950/10 border border-red-500/10 text-red-200 rounded-xl">
+                      <span className="text-red-400 block font-mono font-bold uppercase text-[9px] tracking-wider">ALLERGIES</span>
+                      <p className="mt-1 font-medium">{selectedMember.allergies || "No active environmental or food allergen records."}</p>
+                    </div>
+                    <div className="p-3 bg-red-950/10 border border-red-500/10 text-red-200 rounded-xl">
+                      <span className="text-red-400 block font-mono font-bold uppercase text-[9px] tracking-wider">RESTRICTION MEDICATIONS</span>
+                      <p className="mt-1 font-medium">{selectedMember.medications || "No active beta-blockers or cardiac prescriptions stored."}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB K: COACH NOTES */}
+            {activeProfileTab === "TRAINER_NOTES" && (
+              <div className="space-y-4 text-zinc-300 text-xs">
+                <h3 className="text-sm font-black text-white font-mono tracking-wider uppercase border-b border-zinc-8s0 pb-1.5">
+                  Assigned Coach Notes & Instructions
+                </h3>
+                <div className="p-4 bg-zinc-955 border border-zinc-800 rounded-2xl bg-zinc-950/80 leading-relaxed space-y-3 text-xs italic">
+                  <strong className="text-amber-500 block font-mono font-bold uppercase text-[9px] tracking-widest not-italic">
+                    LATEST TRAINER REMARKS RECORDED
+                  </strong>
+                  <p className="text-zinc-200 font-sans">"{selectedMember.trainerNotes || "No notes logged by standard coach yet."}"</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono font-bold">
+                  <div className="p-3.5 bg-zinc-950 border border-zinc-850 rounded-xl">
+                    <span className="text-zinc-500 text-[9px] uppercase tracking-wider block">LOCKER LOCATION ASSIGNER</span>
+                    <span className="text-white text-xs block mt-1">{selectedMember.locker || "No locker assigned."}</span>
+                  </div>
+                  <div className="p-3.5 bg-zinc-950 border border-zinc-850 rounded-xl">
+                    <span className="text-zinc-500 text-[9px] uppercase tracking-wider block">PERSONAL TRAINING PACKAGE (PT)</span>
+                    <span className="text-white text-xs block mt-1">{selectedMember.ptPackage || "Standard General Access"}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB L: EVENT TIMELINE ACCUMULATION */}
+            {activeProfileTab === "TIMELINE" && (
+              <div className="space-y-5 text-xs text-zinc-300">
+                <h3 className="text-sm font-black text-white font-mono tracking-widest uppercase border-b border-zinc-800 pb-2">
+                  Chronological Life History Audit Trails
+                </h3>
+                {timelineEntries.length === 0 ? (
+                  <div className="text-center py-10 text-zinc-500 font-mono">No historical timeline operations recorded yet.</div>
+                ) : (
+                  <div className="space-y-4 relative pl-6 border-l border-zinc-800">
+                    {timelineEntries.map((entry, idx) => (
+                      <div key={idx} className="relative space-y-1">
+                        {/* Dot marker */}
+                        <div className="absolute -left-[29.5px] top-1 w-2.5 h-2.5 rounded-full bg-amber-500 border-2 border-zinc-900"></div>
+                        
+                        <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                          <span>{entry.createdAt?.replace("T", " ")?.split(".")[0] || entry.date}</span>
+                          <span className="uppercase text-amber-500 font-bold px-1.5 py-0.5 bg-amber-500/5 rounded border border-amber-500/10">{entry.eventType}</span>
                         </div>
+                        <h4 className="font-extrabold text-white text-xs">{entry.title}</h4>
+                        <p className="text-zinc-400 text-[11px] leading-relaxed font-sans">{entry.description}</p>
                       </div>
                     ))}
                   </div>

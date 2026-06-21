@@ -11,8 +11,12 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Serve post payloads
-  app.use(express.json());
+  // Serve post payloads with increased limits for photo base64 uploads
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ limit: "10mb", extended: true }));
+
+  // Serve static uploaded media files
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
   // Log simple requests in background
   app.use((req, res, next) => {

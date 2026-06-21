@@ -99,8 +99,13 @@ export class MembershipService {
     // Update active fields on Member Profile
     member.activePlanId = params.planId;
     member.status = "Active";
+    member.startDate = params.startDate;
+    member.endDate = endDate;
     
     db.save();
+
+    // Add Timeline log
+    db.addTimelineEntry(params.gymId, params.memberId, "Renewal", "Membership Plan Added", `Assigned plan '${plan.name}' (Price: ${params.pricePaid}, Validity: ${params.startDate} to ${endDate}).`);
 
     AuditService.log({
       gymId: params.gymId,
@@ -179,7 +184,12 @@ export class MembershipService {
     // Ensure profile reflects active fields
     member.activePlanId = params.planId;
     member.status = "Active";
+    member.startDate = nextStart;
+    member.endDate = nextEnd;
     db.save();
+
+    // Add Timeline log
+    db.addTimelineEntry(params.gymId, params.memberId, "Renewal", "Membership Renewed", `Renewed plan '${plan.name}' (Start: ${nextStart}, End: ${nextEnd}, Price: ${params.pricePaid}).`);
 
     AuditService.log({
       gymId: params.gymId,
@@ -244,7 +254,10 @@ export class MembershipService {
     active.updatedAt = new Date().toISOString();
     
     const member = db.getMembers().find(m => m.id === params.memberId);
-    if (member) member.status = "Inactive";
+    if (member) {
+      member.status = "Inactive";
+      db.addTimelineEntry(active.gymId, params.memberId, "Renewal", "Membership Frozen", "Froze active membership temporarily.");
+    }
     
     db.save();
 
@@ -280,6 +293,7 @@ export class MembershipService {
     if (member) {
       member.status = "Expired";
       member.activePlanId = null;
+      db.addTimelineEntry(active.gymId, params.memberId, "Renewal", "Membership Cancelled", "Cancelled active/frozen membership plan.");
     }
     
     db.save();

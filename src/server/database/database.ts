@@ -61,6 +61,24 @@ export interface MemberProfile {
   activePlanId: string | null; // MembershipPlan ID
   status: "Active" | "Inactive" | "Expired" | "Pending";
   photo: string; // URL string or placeholder
+  occupation?: string;
+  bodyFat?: number;
+  chest?: number;
+  waist?: number;
+  hip?: number;
+  biceps?: number;
+  thigh?: number;
+  fitnessGoal?: string;
+  medicalConditions?: string;
+  injuries?: string;
+  allergies?: string;
+  medications?: string;
+  trainerNotes?: string;
+  medicalWarnings?: string;
+  locker?: string;
+  ptPackage?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface MembershipPlan {
@@ -233,6 +251,44 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export interface MemberProgress {
+  id: string;
+  gymId: string;
+  memberId: string;
+  date: string;
+  weight: number;
+  bmi: number;
+  bodyFat: number;
+  chest: number;
+  waist: number;
+  hip: number;
+  biceps: number;
+  thigh: number;
+  notes: string;
+  createdAt: string;
+}
+
+export interface MemberProgressPhoto {
+  id: string;
+  gymId: string;
+  memberId: string;
+  date: string;
+  category: "Front" | "Side" | "Back" | "Comparison";
+  photoPath: string;
+  createdAt: string;
+}
+
+export interface MemberTimeline {
+  id: string;
+  gymId: string;
+  memberId: string;
+  date: string;
+  type: string; // 'Registration' | 'Attendance' | 'Payment' | 'Renewal' | 'Workout' | 'Diet' | 'TrainerNotes'
+  title: string;
+  description: string;
+  createdAt: string;
+}
+
 // Entire Database Structure
 export interface DatabaseStructure {
   roles: Role[];
@@ -252,6 +308,9 @@ export interface DatabaseStructure {
   settings: Settings[];
   auditLogs: AuditLog[];
   futureCameraAttendance: FutureCameraAttendance[];
+  memberProgress: MemberProgress[];
+  memberProgressPhotos: MemberProgressPhoto[];
+  memberTimeline: MemberTimeline[];
 }
 
 // Create a singleton DB helper class
@@ -394,6 +453,9 @@ class CRMDatabase {
       const [settingsRows] = await conn.query("SELECT * FROM settings");
       const [auditLogsRows] = await conn.query("SELECT * FROM audit_logs");
       const [futureCameraAttendanceRows] = await conn.query("SELECT * FROM future_camera_attendance");
+      const [progressRows] = await conn.query("SELECT * FROM member_progress");
+      const [photosRows] = await conn.query("SELECT * FROM member_progress_photos");
+      const [timelineRows] = await conn.query("SELECT * FROM member_timeline");
 
       this.data = {
         roles: rolesRows as Role[],
@@ -424,6 +486,9 @@ class CRMDatabase {
         settings: settingsRows as Settings[],
         auditLogs: auditLogsRows as AuditLog[],
         futureCameraAttendance: futureCameraAttendanceRows as FutureCameraAttendance[],
+        memberProgress: progressRows as MemberProgress[],
+        memberProgressPhotos: photosRows as MemberProgressPhoto[],
+        memberTimeline: timelineRows as MemberTimeline[]
       };
 
       this.isMySQLActive = true;
@@ -465,7 +530,17 @@ class CRMDatabase {
 
       await conn.query("DELETE FROM members");
       for (const m of this.data.members) {
-        await conn.query("INSERT INTO members (id, memberId, gender, dob, height, weight, bmi, bloodGroup, address, emergencyContactName, emergencyContactPhone, joiningDate, trainerId, activePlanId, status, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [m.id, m.memberId, m.gender, m.dob, m.height, m.weight, m.bmi, m.bloodGroup, m.address, m.emergencyContactName, m.emergencyContactPhone, m.joiningDate, m.trainerId || null, m.activePlanId || null, m.status, m.photo]);
+        await conn.query(
+          `INSERT INTO members (
+            id, memberId, gender, dob, height, weight, bmi, bloodGroup, address, emergencyContactName, emergencyContactPhone, joiningDate, trainerId, activePlanId, status, photo,
+            occupation, bodyFat, chest, waist, hip, biceps, thigh, fitnessGoal, medicalConditions, injuries, allergies, medications, trainerNotes, medicalWarnings, locker, ptPackage, startDate, endDate
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            m.id, m.memberId, m.gender, m.dob, m.height, m.weight, m.bmi, m.bloodGroup, m.address, m.emergencyContactName, m.emergencyContactPhone, m.joiningDate, m.trainerId || null, m.activePlanId || null, m.status, m.photo,
+            m.occupation || null, m.bodyFat || 0, m.chest || 0, m.waist || 0, m.hip || 0, m.biceps || 0, m.thigh || 0, m.fitnessGoal || null, m.medicalConditions || null,
+            m.injuries || null, m.allergies || null, m.medications || null, m.trainerNotes || null, m.medicalWarnings || null, m.locker || null, m.ptPackage || null, m.startDate || null, m.endDate || null
+          ]
+        );
       }
 
       await conn.query("DELETE FROM membership_plans");
@@ -526,6 +601,21 @@ class CRMDatabase {
       await conn.query("DELETE FROM future_camera_attendance");
       for (const c of this.data.futureCameraAttendance) {
         await conn.query("INSERT INTO future_camera_attendance (id, gymId, placeholderText, notes, deviceStatus) VALUES (?, ?, ?, ?, ?)", [c.id, c.gymId, c.placeholderText, c.notes, c.deviceStatus]);
+      }
+
+      await conn.query("DELETE FROM member_progress");
+      for (const p of this.data.memberProgress || []) {
+        await conn.query("INSERT INTO member_progress (id, gymId, memberId, date, weight, bmi, bodyFat, chest, waist, hip, biceps, thigh, notes, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [p.id, p.gymId, p.memberId, p.date, p.weight, p.bmi, p.bodyFat, p.chest, p.waist, p.hip, p.biceps, p.thigh, p.notes, p.createdAt]);
+      }
+
+      await conn.query("DELETE FROM member_progress_photos");
+      for (const ph of this.data.memberProgressPhotos || []) {
+        await conn.query("INSERT INTO member_progress_photos (id, gymId, memberId, date, category, photoPath, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)", [ph.id, ph.gymId, ph.memberId, ph.date, ph.category, ph.photoPath, ph.createdAt]);
+      }
+
+      await conn.query("DELETE FROM member_timeline");
+      for (const tl of this.data.memberTimeline || []) {
+        await conn.query("INSERT INTO member_timeline (id, gymId, memberId, date, type, title, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [tl.id, tl.gymId, tl.memberId, tl.date, tl.type, tl.title, tl.description, tl.createdAt]);
       }
 
       await conn.commit();
@@ -679,6 +769,10 @@ class CRMDatabase {
         if (!parsed.expenses) parsed.expenses = seeded.expenses;
         if (!parsed.settings) parsed.settings = seeded.settings;
         if (!parsed.auditLogs) parsed.auditLogs = seeded.auditLogs;
+        
+        if (!parsed.memberProgress) parsed.memberProgress = [];
+        if (!parsed.memberProgressPhotos) parsed.memberProgressPhotos = [];
+        if (!parsed.memberTimeline) parsed.memberTimeline = [];
         
         return parsed as DatabaseStructure;
       } catch (err) {
@@ -1504,6 +1598,9 @@ class CRMDatabase {
       settings,
       auditLogs,
       futureCameraAttendance,
+      memberProgress: [],
+      memberProgressPhotos: [],
+      memberTimeline: []
     };
   }
 
@@ -1525,6 +1622,27 @@ class CRMDatabase {
   public getSettings() { return this.data.settings || []; }
   public getAuditLogs() { return this.data.auditLogs || []; }
   public getFutureCameraAttendance() { return this.data.futureCameraAttendance; }
+  public getMemberProgress() { if (!this.data.memberProgress) this.data.memberProgress = []; return this.data.memberProgress; }
+  public getMemberProgressPhotos() { if (!this.data.memberProgressPhotos) this.data.memberProgressPhotos = []; return this.data.memberProgressPhotos; }
+  public getMemberTimeline() { if (!this.data.memberTimeline) this.data.memberTimeline = []; return this.data.memberTimeline; }
+
+  public addTimelineEntry(gymId: string, memberId: string, type: string, title: string, description: string): void {
+    if (!this.data.memberTimeline) {
+      this.data.memberTimeline = [];
+    }
+    const newEntry: MemberTimeline = {
+      id: "tl-" + Math.floor(100000 + Math.random() * 900000),
+      gymId,
+      memberId,
+      date: new Date().toISOString().split("T")[0],
+      type,
+      title,
+      description,
+      createdAt: new Date().toISOString()
+    };
+    this.data.memberTimeline.push(newEntry);
+    this.save();
+  }
 }
 
 export const db = new CRMDatabase();

@@ -139,7 +139,25 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
           trainerId VARCHAR(255) NULL,
           activePlanId VARCHAR(255) NULL,
           status VARCHAR(100) NOT NULL,
-          photo TEXT
+          photo TEXT,
+          occupation TEXT,
+          bodyFat DOUBLE DEFAULT 0.0,
+          chest DOUBLE DEFAULT 0.0,
+          waist DOUBLE DEFAULT 0.0,
+          hip DOUBLE DEFAULT 0.0,
+          biceps DOUBLE DEFAULT 0.0,
+          thigh DOUBLE DEFAULT 0.0,
+          fitnessGoal VARCHAR(255),
+          medicalConditions TEXT,
+          injuries TEXT,
+          allergies TEXT,
+          medications TEXT,
+          trainerNotes TEXT,
+          medicalWarnings TEXT,
+          locker VARCHAR(255),
+          ptPackage VARCHAR(255),
+          startDate VARCHAR(100),
+          endDate VARCHAR(100)
         );
       `
     },
@@ -335,6 +353,56 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
           deviceStatus VARCHAR(100) NOT NULL
         );
       `
+    },
+    {
+      name: "member_progress",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS member_progress (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          memberId VARCHAR(255) NOT NULL,
+          date VARCHAR(100) NOT NULL,
+          weight DOUBLE DEFAULT 0.0,
+          bmi DOUBLE DEFAULT 0.0,
+          bodyFat DOUBLE DEFAULT 0.0,
+          chest DOUBLE DEFAULT 0.0,
+          waist DOUBLE DEFAULT 0.0,
+          hip DOUBLE DEFAULT 0.0,
+          biceps DOUBLE DEFAULT 0.0,
+          thigh DOUBLE DEFAULT 0.0,
+          notes TEXT,
+          createdAt VARCHAR(100)
+        );
+      `
+    },
+    {
+      name: "member_progress_photos",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS member_progress_photos (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          memberId VARCHAR(255) NOT NULL,
+          date VARCHAR(100) NOT NULL,
+          category VARCHAR(100) NOT NULL,
+          photoPath TEXT NOT NULL,
+          createdAt VARCHAR(100)
+        );
+      `
+    },
+    {
+      name: "member_timeline",
+      ddl: `
+        CREATE TABLE IF NOT EXISTS member_timeline (
+          id VARCHAR(255) PRIMARY KEY,
+          gymId VARCHAR(255) NOT NULL,
+          memberId VARCHAR(255) NOT NULL,
+          date VARCHAR(100) NOT NULL,
+          type VARCHAR(100) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          description TEXT,
+          createdAt VARCHAR(100)
+        );
+      `
     }
   ];
 
@@ -342,6 +410,40 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
   for (const t of tables) {
     log(`Creating table '${t.name}' (if not exists)...`);
     await connection.query(t.ddl);
+  }
+
+  // Ensure members table has the new columns if it was created previously
+  const colsToEnsure = [
+    { name: "occupation", ddl: "ALTER TABLE members ADD COLUMN occupation TEXT NULL" },
+    { name: "bodyFat", ddl: "ALTER TABLE members ADD COLUMN bodyFat DOUBLE DEFAULT 0.0" },
+    { name: "chest", ddl: "ALTER TABLE members ADD COLUMN chest DOUBLE DEFAULT 0.0" },
+    { name: "waist", ddl: "ALTER TABLE members ADD COLUMN waist DOUBLE DEFAULT 0.0" },
+    { name: "hip", ddl: "ALTER TABLE members ADD COLUMN hip DOUBLE DEFAULT 0.0" },
+    { name: "biceps", ddl: "ALTER TABLE members ADD COLUMN biceps DOUBLE DEFAULT 0.0" },
+    { name: "thigh", ddl: "ALTER TABLE members ADD COLUMN thigh DOUBLE DEFAULT 0.0" },
+    { name: "fitnessGoal", ddl: "ALTER TABLE members ADD COLUMN fitnessGoal VARCHAR(255) NULL" },
+    { name: "medicalConditions", ddl: "ALTER TABLE members ADD COLUMN medicalConditions TEXT NULL" },
+    { name: "injuries", ddl: "ALTER TABLE members ADD COLUMN injuries TEXT NULL" },
+    { name: "allergies", ddl: "ALTER TABLE members ADD COLUMN allergies TEXT NULL" },
+    { name: "medications", ddl: "ALTER TABLE members ADD COLUMN medications TEXT NULL" },
+    { name: "trainerNotes", ddl: "ALTER TABLE members ADD COLUMN trainerNotes TEXT NULL" },
+    { name: "medicalWarnings", ddl: "ALTER TABLE members ADD COLUMN medicalWarnings TEXT NULL" },
+    { name: "locker", ddl: "ALTER TABLE members ADD COLUMN locker VARCHAR(255) NULL" },
+    { name: "ptPackage", ddl: "ALTER TABLE members ADD COLUMN ptPackage VARCHAR(255) NULL" },
+    { name: "startDate", ddl: "ALTER TABLE members ADD COLUMN startDate VARCHAR(100) NULL" },
+    { name: "endDate", ddl: "ALTER TABLE members ADD COLUMN endDate VARCHAR(100) NULL" }
+  ];
+
+  for (const col of colsToEnsure) {
+    try {
+      const [cols]: any = await connection.query(`SHOW COLUMNS FROM members LIKE '${col.name}'`);
+      if (cols.length === 0) {
+        log(`Altering members table to add missing column ${col.name}...`);
+        await connection.query(col.ddl);
+      }
+    } catch (err: any) {
+      log(`Column addition failed for ${col.name}: ${err.message}`);
+    }
   }
 
   log("All database tables are initialized and verified!");

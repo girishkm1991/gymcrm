@@ -24,6 +24,11 @@ export default function AttendanceView({ user }: AttendanceViewProps) {
   const [timeIn, setTimeIn] = useState(new Date().toTimeString().split(" ")[0]);
   const [remarks, setRemarks] = useState("");
 
+  // QR Simulation States
+  const [qrInput, setQrInput] = useState("");
+  const [scanMessage, setScanMessage] = useState<any>(null);
+  const [scanError, setScanError] = useState("");
+
   async function loadAttendanceData() {
     setLoading(true);
     try {
@@ -42,6 +47,38 @@ export default function AttendanceView({ user }: AttendanceViewProps) {
   useEffect(() => {
     loadAttendanceData();
   }, []);
+
+  const handleQrScanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qrInput.trim()) return;
+
+    setScanError("");
+    setScanMessage(null);
+    try {
+      const res = await api.post("/attendance/scan-qr", { qrToken: qrInput.trim() });
+      setScanMessage(res.data);
+      setQrInput("");
+      loadAttendanceData();
+    } catch (err: any) {
+      setScanError(err.response?.data?.error || "Invalid QR Security Token.");
+    }
+  };
+
+  const handleQuickMemberQrScan = async (selectedId: string) => {
+    if (!selectedId) return;
+    setScanError("");
+    setScanMessage(null);
+    try {
+      const tokenRes = await api.get(`/members/${selectedId}/qr`);
+      const token = tokenRes.data.token;
+
+      const scanRes = await api.post("/attendance/scan-qr", { qrToken: token });
+      setScanMessage(scanRes.data);
+      loadAttendanceData();
+    } catch (err: any) {
+      setScanError(err.response?.data?.error || "Quick Scan failed.");
+    }
+  };
 
   const handleManualCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,6 +242,120 @@ export default function AttendanceView({ user }: AttendanceViewProps) {
           </form>
         </div>
       )}
+
+      {/* QR Code Attendance Scanner Terminal */}
+      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl space-y-4">
+        <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+          <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse"></span>
+          <h3 className="text-sm font-black text-white tracking-widest uppercase font-mono">Simulated Front Desk QR Scanner</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-zinc-300">
+          <div className="space-y-4">
+            <p className="text-zinc-400 leading-relaxed">
+              Simulate presenting a secure, encrypted dynamic QR membership card at the front desk. 
+              The terminal automatically logs check-ins or check-outs, preventing duplicate logins.
+            </p>
+
+            {/* Quick simulation picker */}
+            <div className="p-4 bg-zinc-950 border border-zinc-850 rounded-2xl space-y-2.5">
+              <label className="text-[10px] font-mono tracking-wider text-zinc-500 font-bold uppercase block">
+                Quick Scan Simulation (Select any member)
+              </label>
+              <div className="flex gap-2">
+                <select
+                  onChange={(e) => handleQuickMemberQrScan(e.target.value)}
+                  className="flex-grow bg-zinc-900 border border-zinc-800 p-2 text-[11px] focus:outline-none focus:border-amber-500 rounded-xl text-zinc-300"
+                  defaultValue=""
+                >
+                  <option value="" disabled>Select member to instant tap...</option>
+                  {members.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.fullName} ({m.memberId})
+                    </option>
+                  ))}
+                </select>
+                <div className="text-[10px] bg-zinc-900 px-3 py-2 border border-zinc-800 rounded-xl font-bold flex items-center text-zinc-400 shrink-0">
+                  Instant Tap
+                </div>
+              </div>
+            </div>
+
+            {/* Manual QR string entry */}
+            <form onSubmit={handleQrScanSubmit} className="space-y-2">
+              <label className="text-[10px] font-mono tracking-wider text-zinc-500 font-bold uppercase block">
+                Or Scan QR Token Signature (USB Reader Feed)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste secure member QR token string..."
+                  value={qrInput}
+                  onChange={(e) => setQrInput(e.target.value)}
+                  className="flex-grow bg-zinc-950 border border-zinc-800 p-2.5 rounded-xl text-white font-mono placeholder:text-zinc-700 focus:outline-none focus:border-amber-500 text-[11.5px]"
+                />
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 rounded-xl active:scale-95 transition-all text-xs cursor-pointer"
+                >
+                  Submit Scan
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Scanner Feedback Display */}
+          <div className="bg-zinc-950 border border-zinc-850 p-5 rounded-2xl flex flex-col justify-center min-h-[160px]">
+            {scanError && (
+              <div className="text-center space-y-1.5 p-3 bg-red-950/20 border border-red-500/10 text-red-400 rounded-xl">
+                <div className="font-extrabold uppercase font-mono tracking-widest text-[9px]">Scan Rejected</div>
+                <div className="text-xs font-semibold">{scanError}</div>
+              </div>
+            )}
+
+            {scanMessage && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
+                  <span className={`text-[9px] font-black font-mono tracking-widest uppercase px-2 py-0.5 rounded-full ${
+                    scanMessage.status === "checked_in" ? "bg-emerald-500/15 text-emerald-400" : "bg-blue-500/15 text-blue-400"
+                  }`}>
+                    {scanMessage.status === "checked_in" ? "CHECKED IN SUCCESS" : "CHECKED OUT SUCCESS"}
+                  </span>
+                  <span className="text-[9px] text-zinc-500 font-mono">
+                    {scanMessage.attendance?.date} • {scanMessage.status === "checked_in" ? scanMessage.attendance?.timeIn : scanMessage.attendance?.timeOut}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={scanMessage.member?.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"} 
+                    className="w-12 h-12 rounded-xl object-cover border border-zinc-805"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div>
+                    <div className="text-sm font-black text-white">{scanMessage.member?.fullName || scanMessage.member?.name}</div>
+                    <div className="text-[10px] text-zinc-500 font-mono">{scanMessage.member?.memberId || scanMessage.member?.code}</div>
+                  </div>
+                </div>
+
+                <div className="text-[10px] italic text-zinc-400">
+                  {scanMessage.status === "checked_in" 
+                    ? "✓ Entry approved. Dynamic attendance dashboard indices updated." 
+                    : "✓ Exit captured. Active training session concluded safely."
+                  }
+                </div>
+              </div>
+            )}
+
+            {!scanError && !scanMessage && (
+              <div className="text-center py-6 text-zinc-600 font-mono text-[10px] uppercase tracking-wider space-y-1">
+                <div className="animate-pulse">Awaiting dynamic validation swipe...</div>
+                <div className="text-[9px] text-zinc-700">Terminal Standby Mode</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Active checked in roster (Awaiting checkout) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

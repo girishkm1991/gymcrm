@@ -1,4 +1,70 @@
 import { Router, Request, Response } from "express";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+
+// Helper: Save Base64 Image to uploads folder
+export function saveBase64Image(base64Data: string, prefix: string): string {
+  if (!base64Data || (!base64Data.startsWith("data:") && base64Data.includes("/uploads/"))) {
+    return base64Data;
+  }
+  if (!base64Data.startsWith("data:")) {
+    return base64Data; // Url or placeholder
+  }
+
+  try {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    let fileBuffer: Buffer;
+    let ext = "png";
+
+    if (matches && matches.length === 3) {
+      const mimeType = matches[1];
+      fileBuffer = Buffer.from(matches[2], 'base64');
+      if (mimeType.includes("jpeg") || mimeType.includes("jpg")) ext = "jpg";
+      else if (mimeType.includes("webp")) ext = "webp";
+    } else {
+      fileBuffer = Buffer.from(base64Data, 'base64');
+    }
+
+    if (fileBuffer.length > 5 * 1024 * 1024) {
+      throw new Error("File size exceeds 5MB limit");
+    }
+
+    const filename = `${prefix}-${Math.floor(Math.random() * 89999 + 10000)}.${ext}`;
+    const filepath = path.join(uploadsDir, filename);
+    fs.writeFileSync(filepath, fileBuffer);
+
+    return `/uploads/${filename}`;
+  } catch (err) {
+    console.error("Base64 save failure:", err);
+    return base64Data;
+  }
+}
+
+// Helper: QR token security
+function generateQrToken(memberId: string, gymId: string): string {
+  const secret = "gymflow_qr_token_salt_2026";
+  const hash = crypto.createHash("sha256").update(`${memberId}:${gymId}:${secret}`).digest("hex");
+  return `${memberId}_${gymId}_${hash.substring(0, 16)}`;
+}
+
+function validateQrToken(token: string): { memberId: string; gymId: string } | null {
+  const parts = token.split("_");
+  if (parts.length !== 3) return null;
+  const [memberId, gymId, hash] = parts;
+  const secret = "gymflow_qr_token_salt_2026";
+  const expectedHash = crypto.createHash("sha256").update(`${memberId}:${gymId}:${secret}`).digest("hex");
+  if (expectedHash.substring(0, 16) === hash) {
+    return { memberId, gymId };
+  }
+  return null;
+}
+
 import { db, User, MemberProfile, MembershipPlan, Payment, Invoice, Attendance, WorkoutPlan, DietPlan, Notification, Gym } from "../database/database";
 import { AuthService } from "../services/auth.service";
 import { authenticate, authorize, requirePermission } from "../middleware/auth";
@@ -696,7 +762,25 @@ router.post("/members", authenticate, authorize(["GYM_OWNER", "RECEPTIONIST"]), 
     emergencyContactPhone,
     trainerId,
     activePlanId,
-    photo
+    photo,
+    occupation,
+    bodyFat,
+    chest,
+    waist,
+    hip,
+    biceps,
+    thigh,
+    fitnessGoal,
+    medicalConditions,
+    injuries,
+    allergies,
+    medications,
+    trainerNotes,
+    medicalWarnings,
+    locker,
+    ptPackage,
+    startDate,
+    endDate
   } = req.body;
 
   if (!fullName || !email) {
@@ -736,6 +820,9 @@ router.post("/members", authenticate, authorize(["GYM_OWNER", "RECEPTIONIST"]), 
   // Determine static standard Member Display Code
   const displayId = "MEM-" + Math.floor(1000 + Math.random() * 9000);
 
+  // Process Base64 photo of member or use standard asset placeholder
+  const memberPhotoUrl = photo ? saveBase64Image(photo, `profile-${newUserId}`) : "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop";
+
   const newProfile: MemberProfile = {
     id: newUserId,
     memberId: displayId,
@@ -752,10 +839,31 @@ router.post("/members", authenticate, authorize(["GYM_OWNER", "RECEPTIONIST"]), 
     trainerId: trainerId || null,
     activePlanId: activePlanId || null,
     status: activePlanId ? "Active" : "Inactive",
-    photo: photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"
+    photo: memberPhotoUrl,
+    occupation: occupation || "",
+    bodyFat: Number(bodyFat || 0),
+    chest: Number(chest || 0),
+    waist: Number(waist || 0),
+    hip: Number(hip || 0),
+    biceps: Number(biceps || 0),
+    thigh: Number(thigh || 0),
+    fitnessGoal: fitnessGoal || "",
+    medicalConditions: medicalConditions || "",
+    injuries: injuries || "",
+    allergies: allergies || "",
+    medications: medications || "",
+    trainerNotes: trainerNotes || "",
+    medicalWarnings: medicalWarnings || "",
+    locker: locker || "",
+    ptPackage: ptPackage || "",
+    startDate: startDate || "",
+    endDate: endDate || ""
   };
 
   db.getMembers().push(newProfile);
+
+  // Add timeline entry for registration
+  db.addTimelineEntry(gymId, newUserId, "Registration", "Registered Account", `Successfully joined gym under Member ID: ${displayId}.`);
 
   // Auto record initial Payment record if a plan is purchased
   if (activePlanId) {
@@ -812,7 +920,25 @@ router.put("/members/:id", authenticate, authorize(["GYM_OWNER", "RECEPTIONIST",
     trainerId,
     activePlanId,
     status,
-    photo
+    photo,
+    occupation,
+    bodyFat,
+    chest,
+    waist,
+    hip,
+    biceps,
+    thigh,
+    fitnessGoal,
+    medicalConditions,
+    injuries,
+    allergies,
+    medications,
+    trainerNotes,
+    medicalWarnings,
+    locker,
+    ptPackage,
+    startDate,
+    endDate
   } = req.body;
 
   // Let trainer update weight, height, BMI, photo and status notes, let receptionist/owner update everything
@@ -823,8 +949,8 @@ router.put("/members/:id", authenticate, authorize(["GYM_OWNER", "RECEPTIONIST",
     if (gender !== undefined && user.role !== "TRAINER") profile.gender = gender;
     if (dob !== undefined && user.role !== "TRAINER") profile.dob = dob;
     
-    if (height !== undefined) profile.height = height;
-    if (weight !== undefined) profile.weight = weight;
+    if (height !== undefined) profile.height = Number(height);
+    if (weight !== undefined) profile.weight = Number(weight);
     
     // Recalculate BMI on updates
     if (height !== undefined || weight !== undefined) {
@@ -846,7 +972,75 @@ router.put("/members/:id", authenticate, authorize(["GYM_OWNER", "RECEPTIONIST",
     }
     
     if (status !== undefined && user.role !== "TRAINER") profile.status = status;
-    if (photo !== undefined) profile.photo = photo;
+    
+    // Support photo upload mapping via Base64 saving
+    if (photo !== undefined) {
+      profile.photo = saveBase64Image(photo, `profile-${id}`);
+    }
+
+    // Capture and map all Phase 3B physical, medical, and personal fields
+    if (occupation !== undefined) profile.occupation = occupation;
+    if (bodyFat !== undefined) profile.bodyFat = Number(bodyFat || 0);
+    if (chest !== undefined) profile.chest = Number(chest || 0);
+    if (waist !== undefined) profile.waist = Number(waist || 0);
+    if (hip !== undefined) profile.hip = Number(hip || 0);
+    if (biceps !== undefined) profile.biceps = Number(biceps || 0);
+    if (thigh !== undefined) profile.thigh = Number(thigh || 0);
+    if (fitnessGoal !== undefined) profile.fitnessGoal = fitnessGoal;
+    if (medicalConditions !== undefined) profile.medicalConditions = medicalConditions;
+    if (injuries !== undefined) profile.injuries = injuries;
+    if (allergies !== undefined) profile.allergies = allergies;
+    if (medications !== undefined) profile.medications = medications;
+    if (medicalWarnings !== undefined) profile.medicalWarnings = medicalWarnings;
+    if (locker !== undefined) profile.locker = locker;
+    if (ptPackage !== undefined) profile.ptPackage = ptPackage;
+    if (startDate !== undefined) profile.startDate = startDate;
+    if (endDate !== undefined) profile.endDate = endDate;
+
+    // Handle Trainer Notes changes and write timeline log
+    if (trainerNotes !== undefined) {
+      const oldNotes = profile.trainerNotes;
+      profile.trainerNotes = trainerNotes;
+      if (oldNotes !== trainerNotes && trainerNotes.trim() !== "") {
+        db.addTimelineEntry(memberUser.gymId, id, "TrainerNotes", "Trainer Note Added", `Trainer recorded notes: "${trainerNotes}"`);
+      }
+    }
+
+    // Auto record physical stats progress entry if updated
+    if (weight !== undefined || bodyFat !== undefined || chest !== undefined || waist !== undefined) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const progressList = db.getMemberProgress();
+      const existingToday = progressList.find(p => p.memberId === id && p.date === todayStr);
+      
+      if (existingToday) {
+        if (weight !== undefined) existingToday.weight = Number(weight);
+        existingToday.bmi = profile.bmi;
+        if (bodyFat !== undefined) existingToday.bodyFat = Number(bodyFat);
+        if (chest !== undefined) existingToday.chest = Number(chest);
+        if (waist !== undefined) existingToday.waist = Number(waist);
+        if (hip !== undefined) existingToday.hip = Number(hip);
+        if (biceps !== undefined) existingToday.biceps = Number(biceps);
+        if (thigh !== undefined) existingToday.thigh = Number(thigh);
+      } else {
+        const newProgress = {
+          id: "progress-" + Math.floor(100000 + Math.random() * 900000),
+          gymId: memberUser.gymId,
+          memberId: id,
+          date: todayStr,
+          weight: Number(weight !== undefined ? weight : profile.weight),
+          bmi: profile.bmi,
+          bodyFat: Number(bodyFat !== undefined ? bodyFat : profile.bodyFat || 0),
+          chest: Number(chest !== undefined ? chest : profile.chest || 0),
+          waist: Number(waist !== undefined ? waist : profile.waist || 0),
+          hip: Number(hip !== undefined ? hip : profile.hip || 0),
+          biceps: Number(biceps !== undefined ? biceps : profile.biceps || 0),
+          thigh: Number(thigh !== undefined ? thigh : profile.thigh || 0),
+          notes: trainerNotes || profile.trainerNotes || "",
+          createdAt: new Date().toISOString()
+        };
+        progressList.push(newProgress);
+      }
+    }
   }
 
   db.save();
@@ -1712,6 +1906,72 @@ router.get("/dashboard/summary", authenticate, (req: Request, res: Response) => 
   const todayStr = new Date().toISOString().split("T")[0];
   const attendanceTodayCount = db.getAttendance().filter(a => a.gymId === gymId && a.date === todayStr).length;
 
+  // New multi-tenant Phase 3B metrics
+  const today = new Date();
+  const todayMonthDay = todayStr.substring(5, 10); // MM-DD
+  
+  // Start of this month
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const newMembersThisMonth = gymMembers.filter(m => {
+    if (!m.joiningDate) return false;
+    const jDate = new Date(m.joiningDate);
+    return jDate >= startOfMonth && jDate <= today;
+  }).length;
+
+  const frozenCount = gymMembers.filter(m => m.status === "Inactive" || m.status === "Pending").length;
+
+  const todaysBirthdays = gymMembers.filter(m => {
+    if (!m.dob) return false;
+    return m.dob.substring(5, 10) === todayMonthDay;
+  }).map(m => {
+    const u = db.getUsers().find(userObj => userObj.id === m.id);
+    return {
+      id: m.id,
+      name: u?.fullName || "Member",
+      photo: m.photo
+    };
+  });
+
+  const memberMemberships = db.getMemberMemberships().filter(m => m.gymId === gymId);
+  const activeMemberships = memberMemberships.filter(m => m.status === "Active");
+
+  // Next week expiries date boundary
+  const next7Days = new Date();
+  next7Days.setDate(next7Days.getDate() + 7);
+
+  const expiriesThisWeek = activeMemberships.filter(msh => {
+    const eDate = new Date(msh.endDate);
+    const todayZero = new Date(todayStr);
+    const eDateZero = new Date(msh.endDate);
+    return eDateZero >= todayZero && eDateZero <= next7Days;
+  }).map(msh => {
+    const m = gymMembers.find(memberObj => memberObj.id === msh.memberId);
+    const u = db.getUsers().find(userObj => userObj.id === msh.memberId);
+    return {
+      memberId: msh.memberId,
+      name: u?.fullName || "Member",
+      expiryDate: msh.endDate,
+      planName: db.getMembershipPlans().find(p => p.id === msh.planId)?.name || "Plan"
+    };
+  });
+
+  // Next 30 days renewals due count
+  const next30Days = new Date();
+  next30Days.setDate(next30Days.getDate() + 30);
+  const renewalsCount = activeMemberships.filter(msh => {
+    const eDate = new Date(msh.endDate);
+    const todayZero = new Date(todayStr);
+    const eDateZero = new Date(msh.endDate);
+    return eDateZero >= todayZero && eDateZero <= next30Days;
+  }).length;
+
+  // QR Attendance logged today count
+  const qrAttendanceCount = db.getAttendance().filter(a => 
+    a.gymId === gymId && 
+    a.date === todayStr && 
+    (a.remarks && a.remarks.toLowerCase().includes("qr"))
+  ).length;
+
   res.json({
     membersCountTotal,
     genders: {
@@ -1720,8 +1980,353 @@ router.get("/dashboard/summary", authenticate, (req: Request, res: Response) => 
     },
     financial,
     membershipsStats,
-    attendanceTodayCount
+    attendanceTodayCount,
+    newMembersThisMonth,
+    renewalsCount,
+    frozenCount,
+    todaysBirthdays,
+    qrAttendanceCount,
+    expiriesThisWeek
   });
+});
+
+// ==========================================
+// 17B. ADVANCED MEMBER LIFECYCLE & QR ATTENDANCE
+// ==========================================
+
+// RECORD WEIGHT, BMI, BODY FAT AND RELEVANT MEASUREMENTS
+router.post("/members/:id/progress", authenticate, authorize(["GYM_OWNER", "TRAINER"]), (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  const member = db.getMembers().find(m => m.id === id);
+  if (!member) {
+    return res.status(404).json({ error: "Member profile not found." });
+  }
+
+  const {
+    date,
+    weight,
+    bmi,
+    bodyFat,
+    chest,
+    waist,
+    hip,
+    biceps,
+    thigh,
+    notes
+  } = req.body;
+
+  let finalBMI = bmi;
+  if (!finalBMI && weight && member.height) {
+    const hMt = member.height / 100;
+    finalBMI = parseFloat((weight / (hMt * hMt)).toFixed(1));
+  }
+
+  const newProgressRec = {
+    id: "progress-" + Math.floor(100000 + Math.random() * 900000),
+    gymId,
+    memberId: id,
+    date: date || new Date().toISOString().split("T")[0],
+    weight: Number(weight || member.weight || 0),
+    bmi: Number(finalBMI || member.bmi || 0),
+    bodyFat: Number(bodyFat || member.bodyFat || 0),
+    chest: Number(chest || member.chest || 0),
+    waist: Number(waist || member.waist || 0),
+    hip: Number(hip || member.hip || 0),
+    biceps: Number(biceps || member.biceps || 0),
+    thigh: Number(thigh || member.thigh || 0),
+    notes: notes || "",
+    createdAt: new Date().toISOString()
+  };
+
+  db.getMemberProgress().push(newProgressRec);
+
+  // Update latest stats on member profile
+  if (weight) member.weight = Number(weight);
+  if (finalBMI) member.bmi = Number(finalBMI);
+  if (bodyFat) member.bodyFat = Number(bodyFat);
+  if (chest) member.chest = Number(chest);
+  if (waist) member.waist = Number(waist);
+  if (hip) member.hip = Number(hip);
+  if (biceps) member.biceps = Number(biceps);
+  if (thigh) member.thigh = Number(thigh);
+  if (notes) member.trainerNotes = notes;
+
+  db.save();
+
+  // Log timeline
+  db.addTimelineEntry(gymId, id, "Workout", "Physical Stats Recorded", `Measurements logged (Weight: ${weight || member.weight}kg, Body Fat: ${bodyFat || member.bodyFat}%).`);
+
+  res.status(201).json({ success: true, progress: newProgressRec });
+});
+
+// GET PROGRESS RECORDS (FOR GRAPHS / TRENDS)
+router.get("/members/:id/progress", authenticate, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  const member = db.getMembers().find(m => m.id === id);
+  if (!member) return res.status(404).json({ error: "Member not found." });
+
+  const list = db.getMemberProgress().filter(p => p.memberId === id && p.gymId === gymId);
+  res.json(list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+});
+
+// POST PROGRESS COMPARISON PHOTO
+router.post("/members/:id/progress-photos", authenticate, authorize(["GYM_OWNER", "TRAINER"]), (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  const { category, photo } = req.body;
+  if (!category || !photo) {
+    return res.status(400).json({ error: "Missing required fields: category, photo" });
+  }
+
+  try {
+    const photoUrl = saveBase64Image(photo, `progress-${category.toLowerCase()}`);
+    
+    const newPhoto = {
+      id: "ph-" + Math.floor(100000 + Math.random() * 900000),
+      gymId,
+      memberId: id,
+      date: new Date().toISOString().split("T")[0],
+      category: category as "Front" | "Side" | "Back" | "Comparison",
+      photoPath: photoUrl,
+      createdAt: new Date().toISOString()
+    };
+
+    db.getMemberProgressPhotos().push(newPhoto);
+    db.save();
+
+    // Log timeline
+    db.addTimelineEntry(gymId, id, "Workout", "Progress Photo Uploaded", `Uploaded progress photo under category '${category}'.`);
+
+    res.status(201).json({ success: true, photo: newPhoto });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET PROGRESS COMPARISON PHOTOS
+router.get("/members/:id/progress-photos", authenticate, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  const photos = db.getMemberProgressPhotos().filter(p => p.memberId === id && p.gymId === gymId);
+  res.json(photos);
+});
+
+// GET CHRONOLOGICAL TIMELINE OF ALL LOGGED EVENTS
+router.get("/members/:id/timeline", authenticate, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  // Double check user authorization to avoid leak
+  const targetUser = db.getUsers().find(u => u.id === id);
+  if (!targetUser || (user.role !== "SUPER_ADMIN" && targetUser.gymId !== user.gymId)) {
+    return res.status(403).json({ error: "Permission Denied." });
+  }
+
+  const list = db.getMemberTimeline().filter(t => t.memberId === id && t.gymId === gymId);
+  res.json(list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+});
+
+// GET QR SIGNATURE FOR MEMBER TO DISPLAY OR RENDER
+router.get("/members/:id/qr", authenticate, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+
+  const member = db.getMembers().find(m => m.id === id);
+  if (!member) return res.status(404).json({ error: "Member not found." });
+
+  const token = generateQrToken(id, gymId);
+  res.json({ token });
+});
+
+// SCAN QR CODE FOR ATTENDANCE CHECK-IN / CHECK-OUT WITH DUPLICATION BLOCK
+router.post("/attendance/scan-qr", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { qrToken } = req.body;
+
+  if (!qrToken) {
+    return res.status(400).json({ error: "QR token is required." });
+  }
+
+  const verified = validateQrToken(qrToken);
+  if (!verified) {
+    return res.status(400).json({ error: "Invalid QR Security Signature." });
+  }
+
+  if (verified.gymId !== gymId) {
+    return res.status(403).json({ error: "Access Denied: Member registered in a separate branch/gym." });
+  }
+
+  const { memberId } = verified;
+  const memberObj = db.getMembers().find(m => m.id === memberId);
+  const memberUser = db.getUsers().find(u => u.id === memberId);
+  if (!memberObj || !memberUser) {
+    return res.status(404).json({ error: "Gym member not found." });
+  }
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const timeNow = new Date().toLocaleTimeString("en-US", { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+  // Lookup existing logs for today
+  const attendanceToday = db.getAttendance().find(a => a.gymId === gymId && a.memberId === memberId && a.date === todayStr);
+
+  if (attendanceToday) {
+    if (!attendanceToday.timeOut) {
+      // Check-out scanning
+      attendanceToday.timeOut = timeNow;
+      db.save();
+      
+      db.addTimelineEntry(gymId, memberId, "Attendance", "Checked Out via QR", `Session ends. Logged exit at ${timeNow}.`);
+      return res.json({
+        success: true,
+        status: "checked_out",
+        member: { id: memberId, name: memberUser.fullName, code: memberObj.memberId },
+        attendance: attendanceToday
+      });
+    } else {
+      return res.status(400).json({ error: "Already checked in and checked out for today. Multiple check-ins blocked." });
+    }
+  } else {
+    // Check-in scanning
+    const newLog = {
+      id: "att-" + Math.floor(100000 + Math.random() * 900000),
+      gymId,
+      memberId,
+      date: todayStr,
+      timeIn: timeNow,
+      timeOut: null,
+      remarks: "Checked in using QR Code scanner",
+      markedBy: user.email
+    };
+    db.getAttendance().push(newLog);
+    db.save();
+
+    db.addTimelineEntry(gymId, memberId, "Attendance", "Checked In via QR", `Session started. Logged entry at ${timeNow}.`);
+    return res.json({
+      success: true,
+      status: "checked_in",
+      member: { id: memberId, name: memberUser.fullName, code: memberObj.memberId },
+      attendance: newLog
+    });
+  }
+});
+
+// SEARCH & EXPORT REPORTS payload GENERATION
+router.get("/reports/:type", authenticate, (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  const { type } = req.params;
+
+  if (type === "member") {
+    const list = db.getMembers().filter(m => {
+      const u = db.getUsers().find(usr => usr.id === m.id);
+      return u && u.gymId === gymId;
+    }).map(m => {
+      const u = db.getUsers().find(usr => usr.id === m.id);
+      const plan = db.getMembershipPlans().find(p => p.id === m.activePlanId);
+      return {
+        memberDisplayId: m.memberId,
+        fullName: u?.fullName || "N/A",
+        email: u?.email || "N/A",
+        phone: u?.phone || "N/A",
+        joiningDate: m.joiningDate,
+        activePlan: plan?.name || "No Plan",
+        status: m.status
+      };
+    });
+    return res.json(list);
+  }
+
+  if (type === "progress") {
+    const list = db.getMemberProgress().filter(p => p.gymId === gymId).map(p => {
+      const m = db.getMembers().find(mo => mo.id === p.memberId);
+      const u = db.getUsers().find(usr => usr.id === p.memberId);
+      return {
+        date: p.date,
+        memberDisplayId: m?.memberId || "N/A",
+        memberName: u?.fullName || "N/A",
+        weight: p.weight,
+        bmi: p.bmi,
+        bodyFat: p.bodyFat,
+        chest: p.chest,
+        waist: p.waist,
+        hip: p.hip,
+        biceps: p.biceps,
+        thigh: p.thigh,
+        notes: p.notes
+      };
+    });
+    return res.json(list);
+  }
+
+  if (type === "attendance") {
+    const list = db.getAttendance().filter(a => a.gymId === gymId).map(a => {
+      const m = db.getMembers().find(mo => mo.id === a.memberId);
+      const u = db.getUsers().find(usr => usr.id === a.memberId);
+      return {
+        date: a.date,
+        memberDisplayId: m?.memberId || "N/A",
+        memberName: u?.fullName || "N/A",
+        timeIn: a.timeIn,
+        timeOut: a.timeOut || "Active",
+        remarks: a.remarks,
+        markedBy: a.markedBy
+      };
+    });
+    return res.json(list);
+  }
+
+  if (type === "renewal") {
+    const memberships = db.getMemberMemberships().filter(msh => msh.gymId === gymId);
+    const list = memberships.map(msh => {
+      const m = db.getMembers().find(mo => mo.id === msh.memberId);
+      const u = db.getUsers().find(usr => usr.id === msh.memberId);
+      const plan = db.getMembershipPlans().find(p => p.id === msh.planId);
+      return {
+        memberDisplayId: m?.memberId || "N/A",
+        memberName: u?.fullName || "N/A",
+        planName: plan?.name || "N/A",
+        startDate: msh.startDate,
+        endDate: msh.endDate,
+        pricePaid: msh.pricePaid,
+        status: msh.status
+      };
+    });
+    return res.json(list);
+  }
+
+  if (type === "trainer") {
+    const trainers = db.getUsers().filter(u => u.gymId === gymId && u.role === "TRAINER");
+    const list = trainers.map(t => {
+      const assigned = db.getMembers().filter(m => m.trainerId === t.id);
+      return {
+        trainerName: t.fullName,
+        trainerEmail: t.email,
+        trainerPhone: t.phone,
+        status: t.status,
+        assignedClientsCount: assigned.length,
+        clients: assigned.map(m => {
+          const u = db.getUsers().find(usr => usr.id === m.id);
+          return `${u?.fullName || "Client"} (${m.memberId})`;
+        }).join(", ")
+      };
+    });
+    return res.json(list);
+  }
+
+  res.status(400).json({ error: "Invalid report type requested." });
 });
 
 // ==========================================
