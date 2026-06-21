@@ -16,12 +16,14 @@ import StaffView from "./components/StaffView";
 import GymsSaaSView from "./components/GymsSaaSView";
 import ReportsView from "./components/ReportsView";
 import PlaceholderFutureView from "./components/PlaceholderFutureView";
+import { RegistrationView } from "./components/RegistrationView";
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("DASHBOARD");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [isRegistering, setIsRegistering] = useState<boolean>(false);
 
   // Restore authenticated session states
   useEffect(() => {
@@ -61,7 +63,18 @@ export default function App() {
 
   // Login view is rendered if no authenticated user
   if (!user) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    if (isRegistering) {
+      return (
+        <RegistrationView
+          onBackToLogin={() => setIsRegistering(false)}
+          onRegistrationSuccess={(userProfile, authToken) => {
+            setIsRegistering(false);
+            handleLoginSuccess(userProfile, authToken);
+          }}
+        />
+      );
+    }
+    return <LoginView onLoginSuccess={handleLoginSuccess} onRegisterClick={() => setIsRegistering(true)} />;
   }
 
   // Sidebar Menu Items with role constraints

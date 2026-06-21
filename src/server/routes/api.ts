@@ -88,6 +88,207 @@ router.post("/auth/reset", (req: Request, res: Response) => {
   res.json({ message: "Password updated successfully! You can now log in." });
 });
 
+// MULTI-TENANT GYM OWNER ONBOARDING REGISTRATION
+router.post("/auth/register", async (req: Request, res: Response) => {
+  const {
+    // Gym Info
+    gymName,
+    gymLogo,
+    address,
+    city,
+    state,
+    country,
+    pincode,
+    phone,
+    email,
+    // Owner Info
+    ownerName,
+    ownerPhone,
+    ownerEmail,
+    ownerPassword,
+    confirmPassword,
+    // Business Info
+    timezone,
+    currency,
+    gstNumber,
+    // Agreement
+    acceptTerms,
+    acceptPrivacy
+  } = req.body;
+
+  // 1. Check required fields are present
+  if (
+    !gymName || !address || !city || !state || !country || !pincode || !phone || !email ||
+    !ownerName || !ownerPhone || !ownerEmail || !ownerPassword || !confirmPassword ||
+    !timezone || !currency
+  ) {
+    return res.status(400).json({ error: "All required fields must be completed." });
+  }
+
+  // 2. Agreement checks
+  if (!acceptTerms || !acceptPrivacy) {
+    return res.status(400).json({ error: "You must accept the Terms & Conditions and Privacy Policy." });
+  }
+
+  // 3. Email format validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email) || !emailRegex.test(ownerEmail)) {
+    return res.status(400).json({ error: "Please provide valid email addresses." });
+  }
+
+  // 4. Password confirmation matching
+  if (ownerPassword !== confirmPassword) {
+    return res.status(400).json({ error: "Passwords do not match." });
+  }
+
+  // 5. Password strength check (e.g. minimum 6 characters)
+  if (ownerPassword.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters long." });
+  }
+
+  try {
+    const crypto = await import("crypto");
+    const gymId = `gym-${crypto.randomBytes(4).toString("hex")}`;
+    const ownerId = `usr-owner-${crypto.randomBytes(4).toString("hex")}`;
+    const gymSlug = gymName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+    // Create Gym record
+    const newGym = {
+      id: gymId,
+      name: gymName,
+      slug: gymSlug,
+      address: `${address}, ${city}, ${state}, ${country} - ${pincode}`,
+      phone: phone,
+      email: email,
+      status: "ACTIVE" as const,
+      subscriptionPlan: "BASIC" as const,
+      subscriptionExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      createdAt: new Date().toISOString()
+    };
+
+    // User credentials creation via bcryptjs
+    const ownerCreds = db.createCredentials(ownerPassword);
+    const newOwnerUser = {
+      id: ownerId,
+      gymId: gymId,
+      roleId: "role-2",
+      role: "GYM_OWNER" as const,
+      fullName: ownerName,
+      email: ownerEmail.toLowerCase(),
+      passwordHash: ownerCreds.hash,
+      passwordSalt: ownerCreds.salt,
+      phone: ownerPhone,
+      status: "ACTIVE" as const,
+      refreshToken: null,
+      createdAt: new Date().toISOString()
+    };
+
+    // Settings record creation
+    const newSettings = {
+      id: `set-${crypto.randomBytes(4).toString("hex")}`,
+      gymId: gymId,
+      gymName: gymName,
+      logo: gymLogo || "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=64&auto=format&fit=crop",
+      address: `${address}, ${city}, ${state}, ${country} - ${pincode}`,
+      phone: phone,
+      email: email,
+      gstNumber: gstNumber || "",
+      currency: currency,
+      workingHours: "06:00 AM - 10:00 PM",
+      receiptFooter: "Thank you for training with us. Eat clean, lift heavy!",
+      paymentQr: "",
+      taxPercentage: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Default membership plans list
+    const defaultPlans = [
+      {
+        id: `plan-mon-${crypto.randomBytes(4).toString("hex")}`,
+        gymId: gymId,
+        name: "Monthly",
+        duration: "Monthly" as const,
+        price: 49.99,
+        description: "Standard monthly membership with complete facility access.",
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `plan-qrt-${crypto.randomBytes(4).toString("hex")}`,
+        gymId: gymId,
+        name: "Quarterly",
+        duration: "Quarterly" as const,
+        price: 129.99,
+        description: "Quarterly value pack with a custom trainer orientation.",
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `plan-hlf-${crypto.randomBytes(4).toString("hex")}`,
+        gymId: gymId,
+        name: "Half Yearly",
+        duration: "Half Yearly" as const,
+        price: 239.99,
+        description: "A 6-month continuous fitness pass with full locker privileges.",
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `plan-ann-${crypto.randomBytes(4).toString("hex")}`,
+        gymId: gymId,
+        name: "Annual",
+        duration: "Annual" as const,
+        price: 399.99,
+        description: "Optimal 12-month value plan with free monthly standard body-index review.",
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    // Notification welcome record
+    const newNotification = {
+      id: `notif-${crypto.randomBytes(4).toString("hex")}`,
+      gymId: gymId,
+      type: "Announcement" as const,
+      title: "Welcome to GymFlow CRM!",
+      message: `Your gym workspace "${gymName}" has been successfully provisioned with isolated multi-tenant parameters. Start by updating your settings or inviting athletes.`,
+      userId: ownerId,
+      isReadBy: [],
+      scheduledFor: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+
+    // Save transactionally block - both DB and Memory list
+    await db.registerTenantTransaction(newGym, newOwnerUser, newSettings, defaultPlans, newNotification);
+
+    // Return successfully on-boarded JWT tokens
+    const accessToken = AuthService.generateAccessToken(newOwnerUser);
+    const refreshToken = AuthService.generateRefreshToken(newOwnerUser);
+
+    // Store session active refresh parameter
+    newOwnerUser.refreshToken = refreshToken;
+    db.save();
+
+    res.status(201).json({
+      message: "Congratulations! Gym workspace and admin account created successfully.",
+      token: accessToken,
+      refreshToken: refreshToken,
+      user: {
+        id: newOwnerUser.id,
+        fullName: newOwnerUser.fullName,
+        email: newOwnerUser.email,
+        role: newOwnerUser.role,
+        gymId: newOwnerUser.gymId,
+        phone: newOwnerUser.phone,
+      }
+    });
+
+  } catch (err: any) {
+    console.error("[Onboarding error]", err);
+    res.status(500).json({ error: err.message || "A transactional server error occurred during onboarding registration." });
+  }
+});
+
 // TOKEN REFRESH ENDPOINT
 router.post("/auth/refresh", (req: Request, res: Response) => {
   const { refreshToken } = req.body;

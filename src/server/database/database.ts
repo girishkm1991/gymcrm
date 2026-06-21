@@ -535,6 +535,94 @@ class CRMDatabase {
     }
   }
 
+  // Register a new multi-tenant Gym with transaction and rollback support
+  public async registerTenantTransaction(
+    gym: Gym, 
+    user: any, 
+    settings: any, 
+    plans: any[], 
+    notification: any
+  ): Promise<void> {
+    // 1. Validate duplicates before anything else:
+    // Check if gym name matches existing gyms
+    const existingGym = this.data.gyms.find(g => g.name.toLowerCase() === gym.name.toLowerCase());
+    if (existingGym) {
+      throw new Error("Gym name already exists. Please choose a unique name.");
+    }
+    // Check if owner email matches existing users
+    const existingUserEmail = this.data.users.find(u => u.email.toLowerCase() === user.email.toLowerCase());
+    if (existingUserEmail) {
+      throw new Error("Email address is already registered.");
+    }
+    // Check if mobile number is duplicated
+    const existingUserPhone = this.data.users.find(u => u.phone === user.phone);
+    if (existingUserPhone) {
+      throw new Error("Mobile number is already registered.");
+    }
+
+    // Backup the memory state for rollback inside JSON fallbacks
+    const jsonBackup = JSON.parse(JSON.stringify(this.data));
+
+    // 2. SQL transactional execution
+    if (this.isMySQLActive && this.dbConnection) {
+      const conn = this.dbConnection;
+      await conn.beginTransaction();
+
+      try {
+        // Insert Gym record
+        await conn.query(
+          "INSERT INTO gyms (id, name, slug, address, phone, email, status, subscriptionPlan, subscriptionExpiry, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [gym.id, gym.name, gym.slug, gym.address, gym.phone, gym.email, gym.status, gym.subscriptionPlan, gym.subscriptionExpiry, gym.createdAt]
+        );
+
+        // Insert User record
+        await conn.query(
+          "INSERT INTO users (id, gymId, roleId, role, fullName, email, passwordHash, passwordSalt, phone, status, refreshToken, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [user.id, user.gymId, user.roleId, user.role, user.fullName, user.email, user.passwordHash, user.passwordSalt, user.phone, user.status, null, user.createdAt]
+        );
+
+        // Insert Settings record
+        await conn.query(
+          "INSERT INTO settings (id, gymId, gymName, logo, address, phone, email, gstNumber, currency, workingHours, receiptFooter, paymentQr, taxPercentage, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [settings.id, settings.gymId, settings.gymName, settings.logo, settings.address, settings.phone, settings.email, settings.gstNumber, settings.currency, settings.workingHours, settings.receiptFooter, settings.paymentQr, settings.taxPercentage, settings.createdAt, settings.updatedAt]
+        );
+
+        // Insert plans list
+        for (const p of plans) {
+          await conn.query(
+            "INSERT INTO membership_plans (id, gymId, name, duration, price, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [p.id, p.gymId, p.name, p.duration, p.price, p.description, p.createdAt]
+          );
+        }
+
+        // Insert Notification record
+        await conn.query(
+          "INSERT INTO notifications (id, gymId, type, title, message, userId, isReadBy, scheduledFor, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [notification.id, notification.gymId, notification.type, notification.title, notification.message, notification.userId, JSON.stringify(notification.isReadBy), notification.scheduledFor, notification.createdAt]
+        );
+
+        await conn.commit();
+      } catch (mysqlErr: any) {
+        await conn.rollback();
+        // Restore memory state if we modified it partially
+        this.data = jsonBackup;
+        throw mysqlErr;
+      }
+    }
+
+    // 3. Update memory state for downstream API lookups
+    this.data.gyms.push(gym);
+    this.data.users.push(user);
+    this.data.settings.push(settings);
+    for (const p of plans) {
+      this.data.membershipPlans.push(p);
+    }
+    this.data.notifications.push(notification);
+
+    // Write-out JSON file to persist changes in backup mode
+    this.saveStructure(this.data);
+  }
+
 
   // Get path for DB source
   private getDbPath(): string {

@@ -4,9 +4,10 @@ import api from "../services/api";
 
 interface LoginViewProps {
   onLoginSuccess: (userProfile: any, token: string) => void;
+  onRegisterClick: () => void;
 }
 
-export default function LoginView({ onLoginSuccess }: LoginViewProps) {
+export default function LoginView({ onLoginSuccess, onRegisterClick }: LoginViewProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isForgotMode, setIsForgotMode] = useState(false);
@@ -183,47 +184,31 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Sign In to GymFlow"}
               <ChevronRight className="w-4 h-4" />
             </button>
+
+            <button
+              type="button"
+              onClick={onRegisterClick}
+              className="w-full h-11 border border-zinc-800 bg-transparent hover:bg-zinc-900 active:scale-95 text-zinc-300 font-semibold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
+            >
+              Create Gym Account
+            </button>
           </form>
         ) : (
-          <form onSubmit={handlePasswordReset} className="space-y-4 animate-slideDown">
-            <h2 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-amber-500" /> Administrative Reset
+          <div className="space-y-4 animate-slideDown text-center py-4">
+            <h2 className="text-lg font-black text-white font-mono uppercase tracking-wider flex items-center justify-center gap-1.5">
+              <Shield className="w-5 h-5 text-orange-500" /> FORGOT PASSWORD?
             </h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Provides visual recovery for on-premise accounts. Authenticate to set a custom key override instantly.
+            
+            <div className="bg-orange-500/10 rounded-2xl p-4 border border-orange-500/20 text-center space-y-1">
+              <span className="text-[10px] font-bold font-mono tracking-widest text-orange-500 block">SYSTEM STATUS</span>
+              <span className="text-xl font-extrabold text-white block">COMING SOON</span>
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed text-left">
+              Our automated SMTP/OAuth cloud recovery mailer is currently under development. To evaluate specific roles instantly, use the **One-Click Instant Demos** or request local administrator override keys.
             </p>
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-400 font-mono">ACCOUNT EMAIL</label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4" />
-                <input
-                  type="email"
-                  placeholder="owner@gymflow.com"
-                  value={recoverEmail}
-                  onChange={(e) => setRecoverEmail(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white text-sm focus:border-amber-500 focus:outline-none transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-400 font-mono">NEW NEW PASSWORD</label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4" />
-                <input
-                  type="password"
-                  placeholder="Min 6 characters"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white text-sm focus:border-amber-500 focus:outline-none transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-1">
+            <div className="pt-2">
               <button
                 type="button"
                 onClick={() => {
@@ -231,19 +216,12 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                   setErrorStatus(null);
                   setInfoStatus(null);
                 }}
-                className="flex-1 h-11 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 font-semibold rounded-xl text-sm transition-all"
+                className="w-full h-11 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 font-semibold rounded-xl text-sm transition-all border border-zinc-800"
               >
-                Go Back
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 h-11 bg-amber-500 text-black hover:bg-amber-400 font-semibold rounded-xl text-sm transition-all shadow-lg shadow-amber-500/10 disabled:opacity-50"
-              >
-                {loading ? "Revising..." : "Reset Password"}
+                Back to Sign In
               </button>
             </div>
-          </form>
+          </div>
         )}
 
         {/* Preset Instant Demo Logins Pane */}
