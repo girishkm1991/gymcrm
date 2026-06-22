@@ -25,6 +25,18 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
 
+  // States for sub-form navigation and back-routing transitions
+  const [initialFormState, setInitialFormState] = useState<"LIST" | "ADD" | "EDIT" | "PROFILE">("LIST");
+  const [membersBackTarget, setMembersBackTarget] = useState<"DASHBOARD" | "LIST">("LIST");
+
+  const handleSetTab = (tab: string, form?: "LIST" | "ADD" | "EDIT" | "PROFILE", backTo?: "DASHBOARD" | "LIST") => {
+    setActiveTab(tab);
+    if (tab === "MEMBERS") {
+      setInitialFormState(form || "LIST");
+      setMembersBackTarget(backTo || "LIST");
+    }
+  };
+
   // Restore authenticated session states
   useEffect(() => {
     const savedUser = localStorage.getItem("gymflow_user");
@@ -102,17 +114,31 @@ export default function App() {
   const renderActiveComponent = () => {
     switch (activeTab) {
       case "DASHBOARD":
-        return <DashboardView user={user} setTab={setActiveTab} />;
+        return <DashboardView user={user} setTab={handleSetTab} />;
       case "MEMBERS":
-        return <MembersView user={user} />;
+        return (
+          <MembersView 
+            user={user} 
+            setTab={handleSetTab}
+            initialForm={initialFormState}
+            backTarget={membersBackTarget}
+            onBack={() => {
+              if (membersBackTarget === "DASHBOARD") {
+                setActiveTab("DASHBOARD");
+              }
+              setInitialFormState("LIST");
+              setMembersBackTarget("LIST");
+            }}
+          />
+        );
       case "ATTENDANCE":
-        return <AttendanceView user={user} />;
+        return <AttendanceView user={user} setTab={handleSetTab} />;
       case "PAYMENTS":
-        return <PaymentsView user={user} />;
+        return <PaymentsView user={user} setTab={handleSetTab} />;
       case "WORKOUT":
         return <WorkoutDietView user={user} />;
       case "STAFF":
-        return <StaffView user={user} />;
+        return <StaffView user={user} setTab={handleSetTab} />;
       case "SAAS":
         return <GymsSaaSView user={user} />;
       case "REPORTS":
@@ -141,7 +167,7 @@ export default function App() {
           />
         );
       default:
-        return <DashboardView user={user} setTab={setActiveTab} />;
+        return <DashboardView user={user} setTab={handleSetTab} />;
     }
   };
 

@@ -9,7 +9,7 @@ import api from "../services/api";
 
 interface DashboardViewProps {
   user: any;
-  setTab: (tab: string) => void;
+  setTab: (tab: string, form?: "LIST" | "ADD" | "EDIT" | "PROFILE", backTo?: "DASHBOARD" | "LIST") => void;
 }
 
 export default function DashboardView({ user, setTab }: DashboardViewProps) {
@@ -172,7 +172,7 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
           <button 
             type="button"
             className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-amber-500 rounded-xl text-xs text-white cursor-pointer transition-all active:scale-95"
-            onClick={() => setTab("gymsSaaS")}
+            onClick={() => setTab("SAAS")}
           >
             Go to Franchise Control panel
           </button>
@@ -255,7 +255,7 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
               <button 
                 type="button"
                 className="text-xs text-amber-500 hover:underline"
-                onClick={() => setTab("workouts")}
+                onClick={() => setTab("WORKOUT")}
               >
                 View Exercises
               </button>
@@ -284,7 +284,7 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
               <button 
                 type="button"
                 className="text-xs text-amber-500 hover:underline"
-                onClick={() => setTab("workouts")}
+                onClick={() => setTab("WORKOUT")}
               >
                 View Meals
               </button>
@@ -329,14 +329,14 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
         <div className="flex gap-2">
           <button 
             type="button"
-            onClick={() => setTab("members")}
+            onClick={() => setTab("MEMBERS", "ADD", "DASHBOARD")}
             className="px-4.5 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-extrabold rounded-xl text-xs cursor-pointer active:scale-95 transition-all shadow-[0_4px_15px_rgba(249,115,22,0.25)]"
           >
             Add New Member
           </button>
           <button 
             type="button"
-            onClick={() => setTab("payments")}
+            onClick={() => setTab("PAYMENTS")}
             className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white font-semibold rounded-xl text-xs cursor-pointer active:scale-95 transition-all"
           >
             Collect Fees

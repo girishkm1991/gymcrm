@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Calendar, Search, Clock, PlusCircle, Check, X, ArrowUpRight, CheckSquare, RefreshCw
+  Calendar, Search, Clock, PlusCircle, Check, X, ArrowUpRight, CheckSquare, RefreshCw, ArrowLeft
 } from "lucide-react";
 import api from "../services/api";
 import { Member, Attendance } from "../types";
 
 interface AttendanceViewProps {
   user: any;
+  setTab?: (tab: string) => void;
 }
 
-export default function AttendanceView({ user }: AttendanceViewProps) {
+export default function AttendanceView({ user, setTab }: AttendanceViewProps) {
   const [attendances, setAttendances] = useState<any[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
@@ -134,14 +135,26 @@ export default function AttendanceView({ user }: AttendanceViewProps) {
       
       {/* Dynamic Header */}
       <div className="border-b border-zinc-850 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
-            Manual Attendance Registry
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Mark athlete check-ins, record departures, and log notes manually inside this on-premise screen.
-          </p>
+        <div className="flex items-center gap-3">
+          {setTab && (
+            <button
+              type="button"
+              onClick={() => setTab("DASHBOARD")}
+              className="p-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 hover:text-white rounded-xl text-zinc-400 transition cursor-pointer"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft className="w-4 h-4 text-zinc-400" />
+            </button>
+          )}
+          <div>
+            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
+              Manual Attendance Registry
+            </h1>
+            <p className="text-sm text-zinc-400 mt-1">
+              Mark athlete check-ins, record departures, and log notes manually inside this on-premise screen.
+            </p>
+          </div>
         </div>
 
         {user.role !== "MEMBER" && (

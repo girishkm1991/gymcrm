@@ -13,6 +13,10 @@ import { Member, MembershipPlan } from "../types";
 
 interface MembersViewProps {
   user: any;
+  setTab?: (tab: string, form?: "LIST" | "ADD" | "EDIT" | "PROFILE", backTo?: "DASHBOARD" | "LIST") => void;
+  initialForm?: "LIST" | "ADD" | "EDIT" | "PROFILE";
+  backTarget?: "DASHBOARD" | "LIST";
+  onBack?: () => void;
 }
 
 type ProfileTab = 
@@ -30,7 +34,7 @@ type ProfileTab =
   | "TIMELINE"
   | "COMMUNICATION";
 
-export default function MembersView({ user }: MembersViewProps) {
+export default function MembersView({ user, setTab, initialForm, backTarget, onBack }: MembersViewProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [trainers, setTrainers] = useState<any[]>([]);
@@ -171,6 +175,30 @@ export default function MembersView({ user }: MembersViewProps) {
   useEffect(() => {
     loadData();
   }, [search, statusFilter, genderFilter, page, activeForm]);
+
+  useEffect(() => {
+    if (initialForm) {
+      if (initialForm === "ADD") {
+        handleOpenAdd();
+      } else {
+        setActiveForm(initialForm);
+      }
+    }
+  }, [initialForm]);
+
+  const handleBackFromAdd = () => {
+    const isDirty = fullName || email || phone || address || activePlanId || trainerId || medicalConditions || injuries || allergies || medications || medicalWarnings;
+    if (isDirty) {
+      if (!confirm("You have unsaved changes. Discard unsaved member registration details?")) {
+        return;
+      }
+    }
+    if (onBack) {
+      onBack();
+    } else {
+      setActiveForm("LIST");
+    }
+  };
 
   const handleOpenAdd = () => {
     setFullName("");
@@ -617,14 +645,26 @@ export default function MembersView({ user }: MembersViewProps) {
         <>
           {/* Header */}
           <div className="border-b border-zinc-850 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
-                Member Directory CRM
-              </h1>
-              <p className="text-sm text-zinc-400 mt-1">
-                Database lookup of full system users, physical stats, trainer assigners, and active plans.
-              </p>
+            <div className="flex items-center gap-3">
+              {setTab && (
+                <button
+                  type="button"
+                  onClick={() => setTab("DASHBOARD")}
+                  className="p-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 hover:text-white rounded-xl text-zinc-400 transition cursor-pointer"
+                  title="Back to Dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4 text-zinc-400" />
+                </button>
+              )}
+              <div>
+                <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                  <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
+                  Member Directory CRM
+                </h1>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Database lookup of full system users, physical stats, trainer assigners, and active plans.
+                </p>
+              </div>
             </div>
             {user.role !== "TRAINER" && (
               <button
@@ -822,7 +862,7 @@ export default function MembersView({ user }: MembersViewProps) {
             </h2>
             <button
               type="button"
-              onClick={() => setActiveForm("LIST")}
+              onClick={handleBackFromAdd}
               className="p-2 hover:bg-zinc-800 rounded-xl"
             >
               <X className="w-5 h-5 text-zinc-400" />
@@ -1204,7 +1244,7 @@ export default function MembersView({ user }: MembersViewProps) {
             <div className="flex gap-4 pt-4 border-t border-zinc-800">
               <button
                 type="button"
-                onClick={() => setActiveForm("LIST")}
+                onClick={handleBackFromAdd}
                 className="flex-1 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs py-3.5 transition cursor-pointer"
               >
                 Go Back

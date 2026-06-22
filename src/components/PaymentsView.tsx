@@ -8,9 +8,10 @@ import { Payment, Member } from "../types";
 
 interface PaymentsViewProps {
   user: any;
+  setTab?: (tab: string) => void;
 }
 
-export default function PaymentsView({ user }: PaymentsViewProps) {
+export default function PaymentsView({ user, setTab }: PaymentsViewProps) {
   // Navigation states
   const [activeTab, setActiveTab] = useState<"LEDGER" | "PROVIDER_SETTINGS" | "REMINDERS">("LEDGER");
   
@@ -341,14 +342,26 @@ export default function PaymentsView({ user }: PaymentsViewProps) {
 
       {/* Main header block */}
       <div className="border-b border-zinc-850 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
-            Payments & Commercial Billing Ledger
-          </h1>
-          <p className="text-xs text-zinc-400 mt-1">
-            Automate invoicing, track payment reminders, customized WhatsApp templates, and query billing records under isolated multi-tenant contexts.
-          </p>
+        <div className="flex items-center gap-3">
+          {setTab && (
+            <button
+              type="button"
+              onClick={() => setTab("DASHBOARD")}
+              className="p-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 hover:text-white rounded-xl text-zinc-400 transition cursor-pointer"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft className="w-4 h-4 text-zinc-400" />
+            </button>
+          )}
+          <div>
+            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
+              Payments & Commercial Billing Ledger
+            </h1>
+            <p className="text-xs text-zinc-400 mt-1">
+              Automate invoicing, track payment reminders, customized WhatsApp templates, and query billing records under isolated multi-tenant contexts.
+            </p>
+          </div>
         </div>
 
         {user.role !== "TRAINER" && (
