@@ -42,6 +42,7 @@ export interface Member {
   trainerName: string;
   activePlanId: string | null;
   planName: string;
+  endDate?: string;
 }
 
 export interface MembershipPlan {
