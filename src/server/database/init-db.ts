@@ -555,7 +555,14 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
 }
 
 // Execute immediately if run directly as module script
-if (import.meta.url.startsWith("file:") && process.argv[1]?.endsWith("init-db.ts")) {
+const isDirectRun = process.argv[1] && (
+  process.argv[1].endsWith("init-db.ts") || 
+  process.argv[1].endsWith("init-db.js") || 
+  process.argv[1].endsWith("init-db.cjs") || 
+  process.argv[1].endsWith("init-db.mjs")
+);
+
+if (isDirectRun) {
   runDatabaseInitialization()
     .then(() => {
       console.log("[DB INIT] Database initialization completed successfully.");
