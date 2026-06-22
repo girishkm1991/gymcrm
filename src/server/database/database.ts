@@ -398,13 +398,16 @@ class CRMDatabase {
   public async initMySQL(): Promise<void> {
     const dbHost = process.env.DB_HOST;
     if (!dbHost) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("[CRMDatabase] DB_HOST is not set in production. MySQL is required!");
+      }
       console.log("[CRMDatabase] No DB_HOST set in environment. Running with local JSON database fallback.");
       return;
     }
 
     try {
       console.log("[CRMDatabase] Running MySQL table creation and validation check...");
-      await runDatabaseInitialization(true, 2);
+      await runDatabaseInitialization(false, 30);
 
       const dbPort = parseInt(process.env.DB_PORT || "3306");
       const dbName = process.env.DB_NAME || "gymcrm";
@@ -590,8 +593,13 @@ class CRMDatabase {
       this.isMySQLActive = true;
       console.log("[CRMDatabase] MySQL Database integration active and fully loaded.");
     } catch (err: any) {
-      console.error("[CRMDatabase] Failed to initialize MySQL connection. Running with local JSON fallback.", err);
+      console.error("[CRMDatabase] Failed to initialize MySQL connection.", err);
       this.isMySQLActive = false;
+      if (process.env.NODE_ENV === "production") {
+        console.error("[CRMDatabase] Production environment is active. Failing fast!");
+        throw err;
+      }
+      console.log("[CRMDatabase] Running with local JSON fallback (AI Studio preview mode).");
     }
   }
 

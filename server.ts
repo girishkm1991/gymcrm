@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import apiRouter from "./src/server/routes/api";
 import { db } from "./src/server/database/database";
@@ -16,7 +17,11 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
   // Serve static uploaded media files
-  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+  const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(uploadsDir));
 
   // Log simple requests in background
   app.use((req, res, next) => {

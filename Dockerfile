@@ -1,26 +1,43 @@
-# Production-ready multi-stage or standalone Node image
-FROM node:22-alpine
+# ==========================================================
+# STAGE 1: Build intermediate assets and bundle code
+# ==========================================================
+FROM node:22-alpine AS builder
 
-# Use secure non-root permissions inside container or run cleanly in alpine environment
 WORKDIR /app
 
-# Copy dependency configs
+# Copy package configurations
 COPY package*.json ./
 
-# Install dependencites cleanly. Installs both dev and prod deps since build tools are devDeps.
+# Install entire dependency graph (including build-time devDependencies)
 RUN npm install
 
-# Copy complete repository structure
+# Copy source tree and config
 COPY . .
 
-# Compile optimized static bundle (Vite SPA template) and the backend Express bundle (dist/server.cjs via esbuild)
+# Build both React static assets and bundle TypeScript server into dist/
 RUN npm run build
 
-# Expose port (must match port 3000 mapping requirement)
-EXPOSE 3000
+# ==========================================================
+# STAGE 2: Secure, lightweight production runtime
+# ==========================================================
+FROM node:22-alpine AS runner
 
-# Set default production environment
+WORKDIR /app
+
+# Enable optimized Node runtime environment
 ENV NODE_ENV=production
 
-# Boot production build by default
-CMD ["npm", "run", "start"]
+# Copy package configs for production dependencies
+COPY package*.json ./
+
+# Install only production dependencies (skips massive build tools)
+RUN npm install --omit=dev
+
+# Gather static distribution files and build bundle from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Expose server listener port
+EXPOSE 3000
+
+# Run native Node process executing bundled server
+CMD ["node", "dist/server.cjs"]

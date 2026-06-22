@@ -4,7 +4,7 @@ import { db, MessageTemplate, CommunicationLog, BillingReminder, GeneratedDocume
 
 export class CommunicationService {
   private static getDocsDir(): string {
-    const dir = path.join(process.cwd(), "data", "documents");
+    const dir = process.env.DOCUMENTS_DIR || path.join(process.cwd(), "data", "documents");
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }

@@ -44,9 +44,9 @@ export async function runDatabaseInitialization(isSilent = false, maxRetries = 2
       break;
     } catch (err: any) {
       retries--;
-      log(`Database server not ready yet (${err.message}). Retrying in 1 second... (${retries} attempts left)`);
+      log(`Database server not ready yet (${err.message}). Retrying in 2 seconds... (${retries} attempts left)`);
       if (retries > 0) {
-        await delay(1000);
+        await delay(2000);
       }
     }
   }

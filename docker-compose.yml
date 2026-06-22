@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
-  # 1. MySQL 8 Database Container
+  # 1. High-Fidelity MySQL 8 Database Server
   gymcrm-db:
     image: mysql:8
     container_name: gymcrm-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: gymcrm
-      MYSQL_USER: gymuser
-      MYSQL_PASSWORD: gympass
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-gymcrm}
+      MYSQL_USER: ${DB_USER:-gymuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-gympass}
     ports:
       - "3306:3306"
     volumes:
@@ -21,7 +19,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # 2. GymFlow CRM Application Container
+  # 2. Production Cased GymFlow Core Application
   gymcrm-app:
     build:
       context: .
@@ -31,24 +29,25 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development  # Use development for auto-reload, can be set to production
+      - NODE_ENV=production
       - DB_HOST=gymcrm-db
       - DB_PORT=3306
-      - DB_NAME=gymcrm
-      - DB_USER=gymuser
-      - DB_PASSWORD=gympass
+      - DB_NAME=${DB_NAME:-gymcrm}
+      - DB_USER=${DB_USER:-gymuser}
+      - DB_PASSWORD=${DB_PASSWORD:-gympass}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - APP_URL=${APP_URL}
-    # Mount local directories to map source code updates inside the container for hot reload
+      - DOCUMENTS_DIR=/data/documents
+      - UPLOADS_DIR=/data/uploads
     volumes:
-      - .:/app
-      - /app/node_modules
-    command: npm run dev
+      - documents_data:/data/documents
+      - uploads_data:/data/uploads
+    command: npm start
     depends_on:
       gymcrm-db:
         condition: service_healthy
 
-  # 3. phpMyAdmin Administrative UI Container
+  # 3. phpMyAdmin Database Web Console (Internal/Proxy)
   gymcrm-phpmyadmin:
     image: phpmyadmin:latest
     container_name: gymcrm-phpmyadmin
@@ -62,7 +61,11 @@ services:
       gymcrm-db:
         condition: service_healthy
 
-# Define named persistent volumes for database reliability
+# Production named storage volumes
 volumes:
   mysql_data:
+    driver: local
+  documents_data:
+    driver: local
+  uploads_data:
     driver: local

@@ -1,0 +1,65 @@
+services:
+  # 1. Dev isolated MySQL Database Server
+  gymcrm-db:
+    image: mysql:8
+    container_name: gymcrm-db-dev
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: gymcrm
+      MYSQL_USER: gymuser
+      MYSQL_PASSWORD: gympass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data_dev:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Interactive Development GymFlow Server with HMR
+  gymcrm-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gymcrm-app-dev
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=gymcrm-db
+      - DB_PORT=3306
+      - DB_NAME=gymcrm
+      - DB_USER=gymuser
+      - DB_PASSWORD=gympass
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+    depends_on:
+      gymcrm-db:
+        condition: service_healthy
+
+  # 3. Dev phpMyAdmin DB Management interface
+  gymcrm-phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: gymcrm-phpmyadmin-dev
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_HOST=gymcrm-db
+      - PMA_PORT=3306
+    depends_on:
+      gymcrm-db:
+        condition: service_healthy
+
+# Dev named storage volumes
+volumes:
+  mysql_data_dev:
+    driver: local
