@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, Search, Filter, Edit, Eye, X, ArrowLeft, Dumbbell, Activity, ShieldAlert, 
   Check, Trash2, Heart, Calendar, Clock, DollarSign, Camera, CreditCard, 
@@ -84,6 +85,12 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   const [activePlanId, setActivePlanId] = useState("");
   const [photo, setPhoto] = useState("https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop");
   const [status, setStatus] = useState<any>("Active");
+  
+  // Premium Onboarding Wizard States
+  const [occupation, setOccupation] = useState("");
+  const [registrationStep, setRegistrationStep] = useState<number>(1);
+  const [registering, setRegistering] = useState(false);
+  const [successMember, setSuccessMember] = useState<any>(null);
 
   // Advanced Physical Details
   const [height, setHeight] = useState<number>(175);
@@ -230,6 +237,9 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
     setLocker("");
     setPtPackage("");
     setTrainerNotes("");
+    setOccupation("");
+    setRegistrationStep(1);
+    setSuccessMember(null);
     setActiveForm("ADD");
   };
 
