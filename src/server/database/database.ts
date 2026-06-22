@@ -388,7 +388,7 @@ export interface DatabaseStructure {
 class CRMDatabase {
   private data: DatabaseStructure;
   public isMySQLActive = false;
-  private dbConnection: mysql.Connection | null = null;
+  private dbPool: mysql.Pool | null = null;
 
   constructor() {
     this.data = this.loadDB();
@@ -414,122 +414,133 @@ class CRMDatabase {
       const dbUser = process.env.DB_USER || "gymuser";
       const dbPassword = process.env.DB_PASSWORD || "gympass";
 
-      this.dbConnection = await mysql.createConnection({
+      this.dbPool = mysql.createPool({
         host: dbHost,
         port: dbPort,
         database: dbName,
         user: dbUser,
         password: dbPassword,
+        waitForConnections: true,
+        connectionLimit: 15,
+        queueLimit: 0,
       });
 
-      console.log("[CRMDatabase] Successfully connected to MySQL database!");
+      console.log("[CRMDatabase] Successfully created MySQL connection pool!");
 
       // Verify if database needs seeding, i.e. if users table has no records
-      const [rows]: any = await this.dbConnection.query("SELECT COUNT(*) as count FROM users");
+      const [rows]: any = await this.dbPool.query("SELECT COUNT(*) as count FROM users");
       const userCount = rows[0]?.count || 0;
 
       if (userCount === 0) {
         console.log("[CRMDatabase] MySQL Database tables are empty. Initiating high-fidelity data seeding...");
         
         const seed = this.generateSeedData();
-        const conn = this.dbConnection;
+        const conn = await this.dbPool.getConnection();
+        try {
+          await conn.beginTransaction();
 
-        // Roles
-        for (const r of seed.roles) {
-          await conn.query("INSERT INTO roles (id, name, description) VALUES (?, ?, ?)", [r.id, r.name, r.description]);
+          // Roles
+          for (const r of seed.roles) {
+            await conn.query("INSERT INTO roles (id, name, description) VALUES (?, ?, ?)", [r.id, r.name, r.description]);
+          }
+          // Permissions
+          for (const p of seed.permissions || []) {
+            await conn.query("INSERT INTO permissions (id, name, description) VALUES (?, ?, ?)", [p.id, p.name, p.description]);
+          }
+          // Gyms
+          for (const g of seed.gyms) {
+            await conn.query("INSERT INTO gyms (id, name, slug, address, phone, email, status, subscriptionPlan, subscriptionExpiry, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [g.id, g.name, g.slug, g.address, g.phone, g.email, g.status, g.subscriptionPlan, g.subscriptionExpiry, g.createdAt]);
+          }
+          // Users
+          for (const u of seed.users) {
+            await conn.query("INSERT INTO users (id, gymId, roleId, role, fullName, email, passwordHash, passwordSalt, phone, status, refreshToken, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [u.id, u.gymId, u.roleId, u.role, u.fullName, u.email, u.passwordHash, u.passwordSalt, u.phone, u.status, u.refreshToken || null, u.createdAt]);
+          }
+          // Members
+          for (const m of seed.members) {
+            await conn.query("INSERT INTO members (id, memberId, gender, dob, height, weight, bmi, bloodGroup, address, emergencyContactName, emergencyContactPhone, joiningDate, trainerId, activePlanId, status, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [m.id, m.memberId, m.gender, m.dob, m.height, m.weight, m.bmi, m.bloodGroup, m.address, m.emergencyContactName, m.emergencyContactPhone, m.joiningDate, m.trainerId || null, m.activePlanId || null, m.status, m.photo]);
+          }
+          // Membership Plans
+          for (const p of seed.membershipPlans) {
+            await conn.query("INSERT INTO membership_plans (id, gymId, name, duration, price, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)", [p.id, p.gymId, p.name, p.duration, p.price, p.description, p.createdAt]);
+          }
+          // Member Memberships
+          for (const m of seed.memberMemberships || []) {
+            await conn.query("INSERT INTO member_memberships (id, gymId, memberId, planId, startDate, endDate, status, pricePaid, freezeDate, cancelDate, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [m.id, m.gymId, m.memberId, m.planId, m.startDate, m.endDate, m.status, m.pricePaid, m.freezeDate || null, m.cancelDate || null, m.createdAt, m.updatedAt]);
+          }
+          // Payments
+          for (const p of seed.payments) {
+            await conn.query("INSERT INTO payments (id, gymId, memberId, amount, type, paymentMode, status, dueDate, paymentDate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [p.id, p.gymId, p.memberId, p.amount, p.type, p.paymentMode, p.status, p.dueDate || null, p.paymentDate || null, p.createdAt]);
+          }
+          // Invoices
+          for (const i of seed.invoices) {
+            await conn.query("INSERT INTO invoices (id, invoiceNo, paymentId, gymId, memberId, memberName, memberEmail, amount, taxAmount, totalAmount, issuedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [i.id, i.invoiceNo, i.paymentId, i.gymId, i.memberId, i.memberName, i.memberEmail, i.amount, i.taxAmount, i.totalAmount, i.issuedAt]);
+          }
+          // Attendance
+          for (const a of seed.attendance) {
+            await conn.query("INSERT INTO attendance (id, gymId, memberId, date, timeIn, timeOut, remarks, markedBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [a.id, a.gymId, a.memberId, a.date, a.timeIn, a.timeOut || null, a.remarks, a.markedBy]);
+          }
+          // Workout Plans
+          for (const w of seed.workoutPlans) {
+            await conn.query("INSERT INTO workout_plans (id, gymId, memberId, trainerId, assignedDate, exercises, notes, history) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [w.id, w.gymId, w.memberId, w.trainerId, w.assignedDate, JSON.stringify(w.exercises), w.notes, JSON.stringify(w.history)]);
+          }
+          // Diet Plans
+          for (const d of seed.dietPlans) {
+            await conn.query("INSERT INTO diet_plans (id, gymId, memberId, trainerId, assignedDate, meals, targets, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [d.id, d.gymId, d.memberId, d.trainerId, d.assignedDate, JSON.stringify(d.meals), JSON.stringify(d.targets), d.notes]);
+          }
+          // Notifications
+          for (const n of seed.notifications) {
+            await conn.query("INSERT INTO notifications (id, gymId, type, title, message, userId, isReadBy, scheduledFor, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [n.id, n.gymId, n.type, n.title, n.message, n.userId, JSON.stringify(n.isReadBy), n.scheduledFor, n.createdAt]);
+          }
+          // Expenses
+          for (const e of seed.expenses || []) {
+            await conn.query("INSERT INTO expenses (id, gymId, category, amount, date, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)", [e.id, e.gymId, e.category, e.amount, e.date, e.description, e.createdAt]);
+          }
+          // Settings
+          for (const s of seed.settings || []) {
+            await conn.query("INSERT INTO settings (id, gymId, gymName, logo, address, phone, email, gstNumber, currency, workingHours, receiptFooter, paymentQr, taxPercentage, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [s.id, s.gymId, s.gymName, s.logo, s.address, s.phone, s.email, s.gstNumber, s.currency, s.workingHours, s.receiptFooter, s.paymentQr, s.taxPercentage, s.createdAt, s.updatedAt]);
+          }
+          // Audit Logs
+          for (const l of seed.auditLogs || []) {
+            await conn.query("INSERT INTO audit_logs (id, gymId, userId, userName, userRole, action, details, ipAddress, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [l.id, l.gymId, l.userId, l.userName, l.userRole, l.action, l.details, l.ipAddress, l.createdAt]);
+          }
+          // Future Camera Attendance
+          for (const c of seed.futureCameraAttendance) {
+            await conn.query("INSERT INTO future_camera_attendance (id, gymId, placeholderText, notes, deviceStatus) VALUES (?, ?, ?, ?, ?)", [c.id, c.gymId, c.placeholderText, c.notes, c.deviceStatus]);
+          }
+
+          await conn.commit();
+          console.log("[CRMDatabase] Database tables seeded successfully!");
+        } catch (seedErr) {
+          await conn.rollback();
+          throw seedErr;
+        } finally {
+          conn.release();
         }
-        // Permissions
-        for (const p of seed.permissions || []) {
-          await conn.query("INSERT INTO permissions (id, name, description) VALUES (?, ?, ?)", [p.id, p.name, p.description]);
-        }
-        // Gyms
-        for (const g of seed.gyms) {
-          await conn.query("INSERT INTO gyms (id, name, slug, address, phone, email, status, subscriptionPlan, subscriptionExpiry, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [g.id, g.name, g.slug, g.address, g.phone, g.email, g.status, g.subscriptionPlan, g.subscriptionExpiry, g.createdAt]);
-        }
-        // Users
-        for (const u of seed.users) {
-          await conn.query("INSERT INTO users (id, gymId, roleId, role, fullName, email, passwordHash, passwordSalt, phone, status, refreshToken, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [u.id, u.gymId, u.roleId, u.role, u.fullName, u.email, u.passwordHash, u.passwordSalt, u.phone, u.status, u.refreshToken || null, u.createdAt]);
-        }
-        // Members
-        for (const m of seed.members) {
-          await conn.query("INSERT INTO members (id, memberId, gender, dob, height, weight, bmi, bloodGroup, address, emergencyContactName, emergencyContactPhone, joiningDate, trainerId, activePlanId, status, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [m.id, m.memberId, m.gender, m.dob, m.height, m.weight, m.bmi, m.bloodGroup, m.address, m.emergencyContactName, m.emergencyContactPhone, m.joiningDate, m.trainerId || null, m.activePlanId || null, m.status, m.photo]);
-        }
-        // Membership Plans
-        for (const p of seed.membershipPlans) {
-          await conn.query("INSERT INTO membership_plans (id, gymId, name, duration, price, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)", [p.id, p.gymId, p.name, p.duration, p.price, p.description, p.createdAt]);
-        }
-        // Member Memberships
-        for (const m of seed.memberMemberships || []) {
-          await conn.query("INSERT INTO member_memberships (id, gymId, memberId, planId, startDate, endDate, status, pricePaid, freezeDate, cancelDate, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [m.id, m.gymId, m.memberId, m.planId, m.startDate, m.endDate, m.status, m.pricePaid, m.freezeDate || null, m.cancelDate || null, m.createdAt, m.updatedAt]);
-        }
-        // Payments
-        for (const p of seed.payments) {
-          await conn.query("INSERT INTO payments (id, gymId, memberId, amount, type, paymentMode, status, dueDate, paymentDate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [p.id, p.gymId, p.memberId, p.amount, p.type, p.paymentMode, p.status, p.dueDate || null, p.paymentDate || null, p.createdAt]);
-        }
-        // Invoices
-        for (const i of seed.invoices) {
-          await conn.query("INSERT INTO invoices (id, invoiceNo, paymentId, gymId, memberId, memberName, memberEmail, amount, taxAmount, totalAmount, issuedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [i.id, i.invoiceNo, i.paymentId, i.gymId, i.memberId, i.memberName, i.memberEmail, i.amount, i.taxAmount, i.totalAmount, i.issuedAt]);
-        }
-        // Attendance
-        for (const a of seed.attendance) {
-          await conn.query("INSERT INTO attendance (id, gymId, memberId, date, timeIn, timeOut, remarks, markedBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [a.id, a.gymId, a.memberId, a.date, a.timeIn, a.timeOut || null, a.remarks, a.markedBy]);
-        }
-        // Workout Plans
-        for (const w of seed.workoutPlans) {
-          await conn.query("INSERT INTO workout_plans (id, gymId, memberId, trainerId, assignedDate, exercises, notes, history) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [w.id, w.gymId, w.memberId, w.trainerId, w.assignedDate, JSON.stringify(w.exercises), w.notes, JSON.stringify(w.history)]);
-        }
-        // Diet Plans
-        for (const d of seed.dietPlans) {
-          await conn.query("INSERT INTO diet_plans (id, gymId, memberId, trainerId, assignedDate, meals, targets, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [d.id, d.gymId, d.memberId, d.trainerId, d.assignedDate, JSON.stringify(d.meals), JSON.stringify(d.targets), d.notes]);
-        }
-        // Notifications
-        for (const n of seed.notifications) {
-          await conn.query("INSERT INTO notifications (id, gymId, type, title, message, userId, isReadBy, scheduledFor, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [n.id, n.gymId, n.type, n.title, n.message, n.userId, JSON.stringify(n.isReadBy), n.scheduledFor, n.createdAt]);
-        }
-        // Expenses
-        for (const e of seed.expenses || []) {
-          await conn.query("INSERT INTO expenses (id, gymId, category, amount, date, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)", [e.id, e.gymId, e.category, e.amount, e.date, e.description, e.createdAt]);
-        }
-        // Settings
-        for (const s of seed.settings || []) {
-          await conn.query("INSERT INTO settings (id, gymId, gymName, logo, address, phone, email, gstNumber, currency, workingHours, receiptFooter, paymentQr, taxPercentage, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [s.id, s.gymId, s.gymName, s.logo, s.address, s.phone, s.email, s.gstNumber, s.currency, s.workingHours, s.receiptFooter, s.paymentQr, s.taxPercentage, s.createdAt, s.updatedAt]);
-        }
-        // Audit Logs
-        for (const l of seed.auditLogs || []) {
-          await conn.query("INSERT INTO audit_logs (id, gymId, userId, userName, userRole, action, details, ipAddress, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [l.id, l.gymId, l.userId, l.userName, l.userRole, l.action, l.details, l.ipAddress, l.createdAt]);
-        }
-        // Future Camera Attendance
-        for (const c of seed.futureCameraAttendance) {
-          await conn.query("INSERT INTO future_camera_attendance (id, gymId, placeholderText, notes, deviceStatus) VALUES (?, ?, ?, ?, ?)", [c.id, c.gymId, c.placeholderText, c.notes, c.deviceStatus]);
-        }
-        
-        console.log("[CRMDatabase] Database tables seeded successfully!");
       }
 
       // Load all records from MySQL tables into this.data structures
       console.log("[CRMDatabase] Loading relational records from MySQL database...");
       
-      const conn = this.dbConnection;
-      const [usersRows] = await conn.query("SELECT * FROM users");
-      const [rolesRows] = await conn.query("SELECT * FROM roles");
-      const [permissionsRows] = await conn.query("SELECT * FROM permissions");
-      const [gymsRows] = await conn.query("SELECT * FROM gyms");
-      const [membersRows] = await conn.query("SELECT * FROM members");
-      const [membershipPlansRows] = await conn.query("SELECT * FROM membership_plans");
-      const [memberMembershipsRows] = await conn.query("SELECT * FROM member_memberships");
-      const [paymentsRows] = await conn.query("SELECT * FROM payments");
-      const [invoicesRows] = await conn.query("SELECT * FROM invoices");
-      const [attendanceRows] = await conn.query("SELECT * FROM attendance");
-      const [workoutPlansRows] = await conn.query("SELECT * FROM workout_plans");
-      const [dietPlansRows] = await conn.query("SELECT * FROM diet_plans");
-      const [notificationsRows] = await conn.query("SELECT * FROM notifications");
-      const [expensesRows] = await conn.query("SELECT * FROM expenses");
-      const [settingsRows] = await conn.query("SELECT * FROM settings");
-      const [auditLogsRows] = await conn.query("SELECT * FROM audit_logs");
-      const [futureCameraAttendanceRows] = await conn.query("SELECT * FROM future_camera_attendance");
-      const [progressRows] = await conn.query("SELECT * FROM member_progress");
-      const [photosRows] = await conn.query("SELECT * FROM member_progress_photos");
-      const [timelineRows] = await conn.query("SELECT * FROM member_timeline");
+      const [usersRows] = await this.dbPool.query("SELECT * FROM users");
+      const [rolesRows] = await this.dbPool.query("SELECT * FROM roles");
+      const [permissionsRows] = await this.dbPool.query("SELECT * FROM permissions");
+      const [gymsRows] = await this.dbPool.query("SELECT * FROM gyms");
+      const [membersRows] = await this.dbPool.query("SELECT * FROM members");
+      const [membershipPlansRows] = await this.dbPool.query("SELECT * FROM membership_plans");
+      const [memberMembershipsRows] = await this.dbPool.query("SELECT * FROM member_memberships");
+      const [paymentsRows] = await this.dbPool.query("SELECT * FROM payments");
+      const [invoicesRows] = await this.dbPool.query("SELECT * FROM invoices");
+      const [attendanceRows] = await this.dbPool.query("SELECT * FROM attendance");
+      const [workoutPlansRows] = await this.dbPool.query("SELECT * FROM workout_plans");
+      const [dietPlansRows] = await this.dbPool.query("SELECT * FROM diet_plans");
+      const [notificationsRows] = await this.dbPool.query("SELECT * FROM notifications");
+      const [expensesRows] = await this.dbPool.query("SELECT * FROM expenses");
+      const [settingsRows] = await this.dbPool.query("SELECT * FROM settings");
+      const [auditLogsRows] = await this.dbPool.query("SELECT * FROM audit_logs");
+      const [futureCameraAttendanceRows] = await this.dbPool.query("SELECT * FROM future_camera_attendance");
+      const [progressRows] = await this.dbPool.query("SELECT * FROM member_progress");
+      const [photosRows] = await this.dbPool.query("SELECT * FROM member_progress_photos");
+      const [timelineRows] = await this.dbPool.query("SELECT * FROM member_timeline");
 
       let whatsappSettingsRows = [];
       let messageTemplatesRows = [];
@@ -537,11 +548,11 @@ class CRMDatabase {
       let billingRemindersRows = [];
       let generatedDocumentsRows = [];
 
-      try { const [rows] = await conn.query("SELECT * FROM whatsapp_settings"); whatsappSettingsRows = rows as any[]; } catch (e) {}
-      try { const [rows] = await conn.query("SELECT * FROM message_templates"); messageTemplatesRows = rows as any[]; } catch (e) {}
-      try { const [rows] = await conn.query("SELECT * FROM communication_logs"); communicationLogsRows = rows as any[]; } catch (e) {}
-      try { const [rows] = await conn.query("SELECT * FROM billing_reminders"); billingRemindersRows = rows as any[]; } catch (e) {}
-      try { const [rows] = await conn.query("SELECT * FROM generated_documents"); generatedDocumentsRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await this.dbPool.query("SELECT * FROM whatsapp_settings"); whatsappSettingsRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await this.dbPool.query("SELECT * FROM message_templates"); messageTemplatesRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await this.dbPool.query("SELECT * FROM communication_logs"); communicationLogsRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await this.dbPool.query("SELECT * FROM billing_reminders"); billingRemindersRows = rows as any[]; } catch (e) {}
+      try { const [rows] = await this.dbPool.query("SELECT * FROM generated_documents"); generatedDocumentsRows = rows as any[]; } catch (e) {}
 
       this.data = {
         roles: rolesRows as Role[],
@@ -591,9 +602,9 @@ class CRMDatabase {
       };
 
       this.isMySQLActive = true;
-      console.log("[CRMDatabase] MySQL Database integration active and fully loaded.");
+      console.log("[CRMDatabase] MySQL Database integration active and fully loaded with connection pool.");
     } catch (err: any) {
-      console.error("[CRMDatabase] Failed to initialize MySQL connection.", err);
+      console.error("[CRMDatabase] Failed to initialize MySQL connection pool.", err);
       this.isMySQLActive = false;
       if (process.env.NODE_ENV === "production") {
         console.error("[CRMDatabase] Production environment is active. Failing fast!");
@@ -605,8 +616,8 @@ class CRMDatabase {
 
   // Save changes to MySQL transactionally
   public async saveToMySQL(): Promise<void> {
-    if (!this.dbConnection || !this.isMySQLActive) return;
-    const conn = this.dbConnection;
+    if (!this.dbPool || !this.isMySQLActive) return;
+    const conn = await this.dbPool.getConnection();
 
     try {
       await conn.beginTransaction();
@@ -764,6 +775,8 @@ class CRMDatabase {
     } catch (err) {
       await conn.rollback();
       throw err;
+    } finally {
+      conn.release();
     }
   }
 
@@ -796,11 +809,11 @@ class CRMDatabase {
     const jsonBackup = JSON.parse(JSON.stringify(this.data));
 
     // 2. SQL transactional execution
-    if (this.isMySQLActive && this.dbConnection) {
-      const conn = this.dbConnection;
-      await conn.beginTransaction();
-
+    if (this.isMySQLActive && this.dbPool) {
+      const conn = await this.dbPool.getConnection();
       try {
+        await conn.beginTransaction();
+
         // Insert Gym record
         await conn.query(
           "INSERT INTO gyms (id, name, slug, address, phone, email, status, subscriptionPlan, subscriptionExpiry, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -835,10 +848,14 @@ class CRMDatabase {
 
         await conn.commit();
       } catch (mysqlErr: any) {
-        await conn.rollback();
+        try {
+          await conn.rollback();
+        } catch (rbErr) {}
         // Restore memory state if we modified it partially
         this.data = jsonBackup;
         throw mysqlErr;
+      } finally {
+        conn.release();
       }
     }
 
