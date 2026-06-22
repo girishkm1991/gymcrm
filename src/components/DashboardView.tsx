@@ -323,8 +323,18 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
       {/* Title Board */}
       <div className="border-b border-zinc-900 pb-5 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <h2 className="text-zinc-500 text-xs font-bold tracking-widest uppercase font-mono">OVERVIEW PERFORMANCE</h2>
-          <h3 className="text-4xl font-black italic mt-1 text-white uppercase tracking-tighter">DASHBOARD</h3>
+          <h2 className="text-zinc-500 text-xs font-bold tracking-widest uppercase font-mono">
+            {user.role === "GYM_OWNER" && "Gym Owner Dashboard Overview"}
+            {user.role === "TRAINER" && "Trainer Coaching Dashboard Overview"}
+            {user.role === "RECEPTIONIST" && "Reception Ops Dashboard Overview"}
+            {(!["GYM_OWNER", "TRAINER", "RECEPTIONIST"].includes(user.role)) && "OVERVIEW PERFORMANCE"}
+          </h2>
+          <h3 className="text-4xl font-black italic mt-1 text-white uppercase tracking-tighter">
+            {user.role === "GYM_OWNER" && "Gym Dashboard"}
+            {user.role === "TRAINER" && "Trainer Dashboard"}
+            {user.role === "RECEPTIONIST" && "Reception Dashboard"}
+            {(!["GYM_OWNER", "TRAINER", "RECEPTIONIST"].includes(user.role)) && "DASHBOARD"}
+          </h3>
         </div>
         <div className="flex gap-2">
           <button 

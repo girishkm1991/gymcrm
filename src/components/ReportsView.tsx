@@ -41,7 +41,7 @@ export default function ReportsView({ user }: ReportsViewProps) {
     }
 
     let csvContent = "";
-    let fileName = `gymflow_${activeTab.toLowerCase()}_report.csv`;
+    let fileName = `imvelogym_${activeTab.toLowerCase()}_report.csv`;
 
     if (activeTab === "MEMBER") {
       csvContent = "Member ID,Full Name,Email,Phone,Joined Date,Plan,Status\n";
@@ -89,7 +89,7 @@ export default function ReportsView({ user }: ReportsViewProps) {
     }
 
     let templateTxt = "";
-    let fileName = `gymflow_${activeTab.toLowerCase()}_report.xls`;
+    let fileName = `imvelogym_${activeTab.toLowerCase()}_report.xls`;
 
     if (activeTab === "MEMBER") {
       templateTxt = "Member ID\tFull Name\tEmail\tPhone\tJoined Date\tPlan\tStatus\n";
@@ -279,7 +279,7 @@ export default function ReportsView({ user }: ReportsViewProps) {
     printWindow.document.write(`
       <html>
         <head>
-          <title>GymFlow SaaS - Audit Report - ${activeTab}</title>
+          <title>ImveloGYM SaaS - Audit Report - ${activeTab}</title>
           <style>
             body { font-family: sans-serif; color: #111; margin: 30px; font-size: 13px; }
             .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ed8936; padding-bottom: 15px; margin-bottom: 20px; }
@@ -298,14 +298,14 @@ export default function ReportsView({ user }: ReportsViewProps) {
               <p>GYM ID: ${user.gymId || "saas-system-sandbox"} • Generated: ${new Date().toLocaleDateString()}</p>
             </div>
             <div>
-              <strong>GYMFLOW CRM</strong>
+              <strong>IMVELOGYM SAAS</strong>
             </div>
           </div>
           <table>
             ${tableHtml}
           </table>
           <div class="footer">
-            GymFlow Multi-Tenant Cloud SaaS System - Corporate Ledger Security Approved
+            ImveloGYM Multi-Tenant Cloud SaaS System - Corporate Ledger Security Approved
           </div>
           <script>
             window.onload = function() {

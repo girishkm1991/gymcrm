@@ -1,21 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-amber-50: #fff7ed;
-  --color-amber-100: #ffedd5;
-  --color-amber-200: #fed7aa;
-  --color-amber-300: #fdba74;
-  --color-amber-400: #fb923c;
-  --color-amber-500: #f97316;
-  --color-amber-600: #ea580c;
-  --color-amber-700: #c2410c;
-  --color-amber-800: #9a3412;
-  --color-amber-900: #7c2d12;
-  --color-amber-950: #431407;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Premium ImveloGYM Theme Colors */
+  --color-brand-primary: #FF7A00;
+  --color-brand-bg: #0A0A0A;
+  --color-brand-card: #171717;
+  --color-brand-border: #2A2A2A;
+  --color-brand-text-p: #FFFFFF;
+  --color-brand-text-s: #A0A0A0;
+  --color-brand-success: #10B981;
+  --color-brand-warning: #F59E0B;
+  --color-brand-error: #EF4444;
 }
 
 body {
   margin: 0;
-  background: #000000;
-  color: #fafafa;
+  background: #0A0A0A;
+  color: #FFFFFF;
+}
+
+/* Custom scrollbars for dark premium look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A2A2A;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #FF7A00;
 }

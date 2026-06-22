@@ -131,7 +131,7 @@ export default function StaffView({ user, setTab }: StaffViewProps) {
                 <label className="text-zinc-500 font-mono font-bold uppercase block tracking-wider">EMAIL ADDRESS</label>
                 <input
                   type="email"
-                  placeholder="zara@gymflow.com"
+                  placeholder="zara@imvelogym.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-850 p-3 text-xs focus:border-amber-500 focus:outline-none text-white rounded-xl"

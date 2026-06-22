@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { 
   Dumbbell, Activity, Users, Calendar, DollarSign, Heart, Sliders, Globe, FileText, 
-  Camera, Sparkles, MessageSquare, LogOut, Menu, X, UserCheck
+  Camera, Sparkles, MessageSquare, LogOut, Menu, X, UserCheck,
+  ChevronLeft, ChevronRight, Settings, HelpCircle, PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import api from "./services/api";
 
 // View Imports
@@ -24,6 +26,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>("DASHBOARD");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false); // Collapsible Sidebar State
 
   // States for sub-form navigation and back-routing transitions
   const [initialFormState, setInitialFormState] = useState<"LIST" | "ADD" | "EDIT" | "PROFILE">("LIST");
@@ -39,21 +42,31 @@ export default function App() {
 
   // Restore authenticated session states
   useEffect(() => {
-    const savedUser = localStorage.getItem("gymflow_user");
-    const savedToken = localStorage.getItem("gymflow_token");
+    const savedUser = localStorage.getItem("imvelogym_user") || localStorage.getItem("gymflow_user");
+    const savedToken = localStorage.getItem("imvelogym_token") || localStorage.getItem("gymflow_token");
     if (savedUser && savedToken) {
       setUser(JSON.parse(savedUser));
       setToken(savedToken);
       // Inject token into Axios interceptors
       api.defaults.headers.common["Authorization"] = `Bearer ${savedToken}`;
     }
+
+    const handleUnauthorized = () => {
+      handleLogout();
+    };
+    window.addEventListener("imvelogym-unauthorized", handleUnauthorized);
+    window.addEventListener("gymflow-unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("imvelogym-unauthorized", handleUnauthorized);
+      window.removeEventListener("gymflow-unauthorized", handleUnauthorized);
+    };
   }, []);
 
   const handleLoginSuccess = (userProfile: any, authToken: string) => {
     setUser(userProfile);
     setToken(authToken);
-    localStorage.setItem("gymflow_user", JSON.stringify(userProfile));
-    localStorage.setItem("gymflow_token", authToken);
+    localStorage.setItem("imvelogym_user", JSON.stringify(userProfile));
+    localStorage.setItem("imvelogym_token", authToken);
     api.defaults.headers.common["Authorization"] = `Bearer ${authToken}`;
     
     // Redirect Super Admin to multi-tenant by default if they want
@@ -67,6 +80,8 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     setToken(null);
+    localStorage.removeItem("imvelogym_user");
+    localStorage.removeItem("imvelogym_token");
     localStorage.removeItem("gymflow_user");
     localStorage.removeItem("gymflow_token");
     delete api.defaults.headers.common["Authorization"];
@@ -112,6 +127,16 @@ export default function App() {
   const allowedFuture = FUTURE_MODULES.filter(item => item.roles.includes(user.role));
 
   const renderActiveComponent = () => {
+    // Route guard check: Only allow tabs present in the user's role-allowed sets
+    const hasPermission = NAVIGATION_ITEMS.some(item => item.id === activeTab && item.roles.includes(user.role)) ||
+                          FUTURE_MODULES.some(item => item.id === activeTab && item.roles.includes(user.role));
+                          
+    if (!hasPermission) {
+      const defaultTab = user.role === "SUPER_ADMIN" ? "SAAS" : "DASHBOARD";
+      setTimeout(() => setActiveTab(defaultTab), 0);
+      return <DashboardView user={user} setTab={handleSetTab} />;
+    }
+
     switch (activeTab) {
       case "DASHBOARD":
         return <DashboardView user={user} setTab={handleSetTab} />;
@@ -172,58 +197,79 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 flex flex-col md:flex-row font-sans selection:bg-orange-500 selection:text-black">
+    <div className="min-h-screen bg-[#0A0A0A] text-zinc-100 flex flex-col md:flex-row font-sans selection:bg-[#FF7A00] selection:text-black">
       
       {/* 1. MOBILE RESPONSIVE NAV BAR HEADER */}
-      <div className="md:hidden bg-[#0A0A0A] border-b border-orange-500/20 p-4 flex justify-between items-center z-30 sticky top-0">
+      <div className="md:hidden bg-[#171717]/95 border-b border-[#2A2A2A] p-4 flex justify-between items-center z-30 sticky top-0 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center font-black text-black text-lg italic">
-            GF
+          <div className="w-9 h-9 bg-gradient-to-br from-[#FF7A00] to-amber-600 rounded-xl flex items-center justify-center font-bold text-black text-base tracking-tighter shadow-[0_0_15px_rgba(255,122,0,0.3)]">
+            IG
           </div>
-          <span className="font-bold text-white text-lg tracking-tighter">GYMFLOW<span className="text-orange-500 font-black">.</span></span>
+          <span className="font-bold text-white text-lg tracking-tight">Imvelo<span className="text-[#FF7A00]">GYM</span></span>
         </div>
         
         <button 
           type="button"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl"
+          className="p-2 bg-[#171717] border border-[#2A2A2A] rounded-xl text-zinc-300 hover:text-white"
         >
-          {isMobileMenuOpen ? <X className="w-5 h-5 text-white" /> : <Menu className="w-5 h-5 text-white" />}
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
       {/* 2. MAIN DESKTOP SIDEBAR NAVIGATION */}
-      <aside className={`
-        fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#0A0A0A] border-r border-orange-500/20 flex flex-col justify-between p-6 transform transition-transform duration-300 ease-in-out shrink-0
-        ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-      `}>
-        <div className="space-y-6">
-          {/* Brand logo (hidden on mobile header double) */}
-          <div className="hidden md:flex items-center gap-3 pb-4 border-b border-zinc-800/80">
-            <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center font-black text-black text-xl italic shadow-[0_0_15px_rgba(249,115,22,0.35)]">
-              GF
+      <aside 
+        className={`
+          fixed md:static inset-y-0 left-0 z-40 bg-[#171717] border-r border-[#2A2A2A] flex flex-col justify-between p-4 transform transition-all duration-300 ease-in-out shrink-0
+          ${isCollapsed ? "w-20" : "w-66"}
+          ${isMobileMenuOpen ? "translate-x-0 w-66" : "-translate-x-full md:translate-x-0"}
+        `}
+      >
+        <div className="space-y-5">
+          {/* Brand header / collapse trigger row */}
+          <div className="flex items-center justify-between pb-4 border-b border-[#2A2A2A]">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 bg-gradient-to-br from-[#FF7A00] to-amber-600 rounded-xl flex items-center justify-center font-black text-black text-sm tracking-tighter shadow-[0_0_12px_rgba(255,122,0,0.3)]">
+                IG
+              </div>
+              {(!isCollapsed || isMobileMenuOpen) && (
+                <div>
+                  <span className="font-extrabold text-white text-base tracking-tight block">Imvelo<span className="text-[#FF7A00]">GYM</span></span>
+                  <span className="text-[8px] text-[#A0A0A0] font-mono uppercase tracking-widest block mt-0.5">SaaS Enterprise</span>
+                </div>
+              )}
             </div>
-            <div>
-              <span className="font-bold text-white tracking-tighter text-xl block">GYMFLOW<span className="text-orange-500 font-black">.</span></span>
-              <span className="text-[9px] text-zinc-550 font-mono uppercase tracking-widest block mt-0.5">SECURE PORTAL</span>
-            </div>
+
+            {/* Collapse toggle button for desktop */}
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="hidden md:flex p-1.5 rounded-lg bg-[#0A0A0A] border border-[#2A2A2A] text-zinc-400 hover:text-white hover:border-zinc-600 transition"
+              title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
           </div>
 
-          {/* User profile capsule card */}
-          <div className="bg-zinc-900/80 rounded-2xl p-4 border border-zinc-800 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 border border-orange-500/20 font-black flex items-center justify-center text-xs">
+          {/* User profile card (collapsible) */}
+          <div className="bg-[#0A0A0A] rounded-2xl p-3 border border-[#2A2A2A] flex items-center gap-2.5 overflow-hidden">
+            <div className={`w-9 h-9 rounded-xl font-bold flex items-center justify-center text-xs shrink-0 transition-all ${isCollapsed && !isMobileMenuOpen ? "bg-[#FF7A00]/15 text-[#FF7A00] border border-[#FF7A00]/30" : "bg-gradient-to-br from-[#FF7A00]/20 to-orange-400/5 text-[#FF7A00] border border-[#FF7A00]/20"}`}>
               {user.fullName.substring(0, 2).toUpperCase()}
             </div>
-            <div className="overflow-hidden">
-              <span className="text-white font-bold text-xs truncate block">{user.fullName}</span>
-              <span className="text-[10px] text-orange-500 font-mono tracking-wider block font-bold mt-0.5">{user.role}</span>
-            </div>
+            {(!isCollapsed || isMobileMenuOpen) && (
+              <div className="overflow-hidden">
+                <span className="text-white font-semibold text-xs truncate block">{user.fullName}</span>
+                <span className="text-[9px] text-[#FF7A00] font-mono tracking-wider block font-semibold mt-0.5 uppercase">{user.role.replace("_", " ")}</span>
+              </div>
+            )}
           </div>
 
           {/* Nav groups */}
-          <nav className="space-y-4 text-xs font-medium">
+          <nav className="space-y-4 text-xs font-semibold">
+            {/* Core Modules List */}
             <div className="space-y-1">
-              <span className="text-[9px] font-mono text-zinc-655 block uppercase tracking-widest pl-3 mb-2">SYSTEM CONFIG</span>
+              {(!isCollapsed || isMobileMenuOpen) && (
+                <span className="text-[9px] font-mono text-[#A0A0A0] block uppercase tracking-widest pl-3 mb-1.5">Business Desk</span>
+              )}
               {allowedNav.map((item) => {
                 const IconComponent = item.icon;
                 const isActive = activeTab === item.id;
@@ -237,23 +283,34 @@ export default function App() {
                       setIsMobileMenuOpen(false);
                     }}
                     className={`
-                      w-full py-3 px-4 rounded-xl flex items-center gap-3 transition-all outline-none font-semibold text-left cursor-pointer
+                      w-full py-2.5 px-3.5 rounded-xl flex items-center gap-3 transition-all outline-none text-left cursor-pointer relative group
                       ${isActive 
-                        ? "bg-orange-500/10 text-orange-500 font-bold border border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]" 
-                        : "text-zinc-550 hover:text-white hover:bg-zinc-900/40"}
+                        ? "bg-[#FF7A00]/10 text-[#FF7A00] border border-[#FF7A00]/25 font-bold shadow-[0_0_15px_rgba(255,122,0,0.06)]" 
+                        : "text-[#A0A0A0] border border-transparent hover:text-white hover:bg-white/5"}
                     `}
                   >
-                    <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isActive ? "bg-orange-500" : "bg-zinc-700"}`} />
-                    <IconComponent className={`w-4 h-4 shrink-0 -ml-0.5 ${isActive ? "text-orange-500" : "text-zinc-500"}`} />
-                    <span>{item.label}</span>
+                    <IconComponent className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-[#FF7A00]" : "text-zinc-400 group-hover:text-zinc-200"}`} />
+                    {(!isCollapsed || isMobileMenuOpen) && (
+                      <span className="truncate">{item.label}</span>
+                    )}
+
+                    {/* Tooltip on collapsed state */}
+                    {isCollapsed && !isMobileMenuOpen && (
+                      <div className="absolute left-full ml-3 px-2 py-1 bg-black text-white text-[10px] rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap border border-[#2A2A2A] shadow-xl">
+                        {item.label}
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
 
+            {/* Smart / Future Integrations */}
             {allowedFuture.length > 0 && (
-              <div className="space-y-1 pt-3 border-t border-zinc-800/80">
-                <span className="text-[9px] font-mono text-zinc-655 block uppercase tracking-widest pl-3 mb-2">BETA LAB MODULES</span>
+              <div className="space-y-1 pt-3 border-t border-[#2A2A2A]">
+                {(!isCollapsed || isMobileMenuOpen) && (
+                  <span className="text-[9px] font-mono text-[#A0A0A0] block uppercase tracking-widest pl-3 mb-1.5">Integrations</span>
+                )}
                 {allowedFuture.map((item) => {
                   const IconComponent = item.icon;
                   const isActive = activeTab === item.id;
@@ -267,15 +324,23 @@ export default function App() {
                         setIsMobileMenuOpen(false);
                       }}
                       className={`
-                        w-full py-3 px-4 rounded-xl flex items-center gap-3 transition-all outline-none text-left cursor-pointer
+                        w-full py-2.5 px-3.5 rounded-xl flex items-center gap-3 transition-all outline-none text-left cursor-pointer relative group
                         ${isActive 
-                          ? "bg-orange-500/10 text-orange-500 font-bold border border-orange-500/20" 
-                          : "text-zinc-550 hover:text-zinc-300 hover:bg-zinc-900/20"}
+                          ? "bg-[#FF7A00]/10 text-[#FF7A00] border border-[#FF7A00]/25 font-bold" 
+                          : "text-[#A0A0A0] border border-transparent hover:text-white hover:bg-white/5"}
                       `}
                     >
-                      <div className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-orange-500" : "bg-zinc-800"}`} />
-                      <IconComponent className={`w-4 h-4 shrink-0 -ml-0.5 ${isActive ? "text-orange-500" : "text-zinc-600"}`} />
-                      <span>{item.label}</span>
+                      <IconComponent className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-[#FF7A00]" : "text-zinc-500 group-hover:text-zinc-300"}`} />
+                      {(!isCollapsed || isMobileMenuOpen) && (
+                        <span className="truncate">{item.label}</span>
+                      )}
+
+                      {/* Tooltip on collapsed state */}
+                      {isCollapsed && !isMobileMenuOpen && (
+                        <div className="absolute left-full ml-3 px-2 py-1 bg-black text-white text-[10px] rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap border border-[#2A2A2A] shadow-xl">
+                          {item.label}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -285,21 +350,60 @@ export default function App() {
         </div>
 
         {/* Logout bottom row item */}
-        <div className="pt-4 border-t border-zinc-900">
+        <div className="pt-3 border-t border-[#2A2A2A]">
           <button
             type="button"
             onClick={handleLogout}
-            className="w-full py-2.5 px-3 bg-[#0A0A0A] hover:bg-red-500/10 hover:text-red-400 border border-zinc-900 rounded-xl flex items-center gap-2.5 transition-all text-xs font-semibold text-zinc-400 cursor-pointer text-left"
+            className="w-full py-2 px-3 hover:bg-[#EF4444]/10 hover:text-red-400 border border-transparent hover:border-[#EF4444]/20 rounded-xl flex items-center gap-2.5 transition-all text-xs font-semibold text-[#A0A0A0] cursor-pointer text-left relative group"
           >
-            <LogOut className="w-4 h-4 text-zinc-500 hover:text-red-400" />
-            <span>Sign Out Session</span>
+            <LogOut className="w-4 h-4 text-zinc-500 group-hover:text-red-400" />
+            {(!isCollapsed || isMobileMenuOpen) && (
+              <span>Sign Out</span>
+            )}
+            
+            {isCollapsed && !isMobileMenuOpen && (
+              <div className="absolute left-full ml-3 px-2 py-1 bg-[#EF4444] text-white text-[10px] rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap">
+                Sign Out Session
+              </div>
+            )}
           </button>
         </div>
       </aside>
 
       {/* 3. MAIN WORKPLACE CANVAS */}
-      <main className="flex-1 bg-[radial-gradient(circle_at_top_right,_#1a1a1a_0%,_#000_100%)] p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
-        {renderActiveComponent()}
+      <main className="flex-1 bg-[#0A0A0A] p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full flex flex-col justify-between min-h-screen">
+        
+        {/* Animated Active Component Mount */}
+        <div className="flex-1 pb-12">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="h-full"
+            >
+              {renderActiveComponent()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* 4. PREMIUM FOOTER */}
+        <footer className="border-t border-[#2A2A2A] pt-4 mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-[#A0A0A0] font-medium font-mono">
+          <div>
+            &copy; {new Date().getFullYear()} <span className="text-white font-bold">ImveloGYM</span> Technologies. All Rights Reserved.
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="#privacy" className="hover:text-[#FF7A00] transition">Privacy Policy</a>
+            <span className="text-zinc-800">&bull;</span>
+            <a href="#terms" className="hover:text-[#FF7A00] transition">Terms of Service</a>
+            <span className="text-zinc-800">&bull;</span>
+            <a href="#support" className="hover:text-[#FF7A00] transition">Support</a>
+            <span className="text-zinc-800">&bull;</span>
+            <span className="bg-[#2A2A2A] text-zinc-300 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider">v4.2.0</span>
+          </div>
+        </footer>
       </main>
 
     </div>

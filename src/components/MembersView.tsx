@@ -193,7 +193,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
         return;
       }
     }
-    if (onBack) {
+    if (backTarget === "DASHBOARD" && onBack) {
       onBack();
     } else {
       setActiveForm("LIST");
@@ -605,7 +605,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
           <div class="card">
             <div class="left-col">
               <div>
-                <div class="title">GYMFLOW SYSTEM</div>
+                <div class="title">IMVELOGYM SYSTEM</div>
                 <div style="font-size: 12px; font-weight: bold; margin-top: 5px; color: #fff;">${selectedMember.fullName}</div>
                 <div style="color: #cbd5e1; margin-top: 2px;">CODE ID: ${selectedMember.memberId}</div>
               </div>
@@ -1667,7 +1667,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                     
                     <div className="flex justify-between items-start border-b border-zinc-850 pb-2.5">
                       <div>
-                        <div className="text-[10px] font-bold text-amber-500 uppercase">GYMFLOW PREMIUM</div>
+                        <div className="text-[10px] font-bold text-[#FF7A00] uppercase">IMVELOGYM PREMIUM</div>
                         <div className="font-bold text-xs text-white uppercase mt-1 truncate max-w-[150px]">{selectedMember.fullName}</div>
                         <div className="text-[9px] text-zinc-500 mt-1">ID: {selectedMember.memberId}</div>
                       </div>

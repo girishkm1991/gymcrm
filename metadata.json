@@ -1,6 +1,6 @@
 {
   "name": "GymFlow CRM",
-  "description": "Gym Management CRM SaaS featuring a multi-role modern dashboard, membership billing, attendance logs, and custom workout or diet plan managers.",
+  "description": "Premium Gym Management SaaS (ImveloGYM) featuring an elegant multi-role dashboard, billing system, real-time attendance logs, and customized premium workout plan managers.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

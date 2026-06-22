@@ -71,7 +71,7 @@ export default function GymsSaaSView({ user }: GymsSaaSViewProps) {
           <div>
             <h3 className="font-extrabold text-sm uppercase font-mono">Unauthorized SaaS Console Access</h3>
             <p className="text-xs text-zinc-400 mt-1">
-              This node is reserved strictly for global system administrators of GymFlow CRM platform.
+              This node is reserved strictly for global system administrators of ImveloGYM SaaS platform.
             </p>
           </div>
         </div>

@@ -127,6 +127,7 @@ router.post("/auth/login", (req: Request, res: Response) => {
       role: user.role,
       gymId: user.gymId,
       phone: user.phone,
+      forcePasswordChange: !!user.forcePasswordChange,
     }
   });
 });
@@ -153,6 +154,36 @@ router.post("/auth/reset", (req: Request, res: Response) => {
   db.save();
 
   res.json({ message: "Password updated successfully! You can now log in." });
+});
+
+// FORCE CHANGE PASSWORD FOR FIRST LOGIN
+router.post("/auth/force-change-password", (req: Request, res: Response) => {
+  const { email, currentPassword, newPassword } = req.body;
+
+  if (!email || !currentPassword || !newPassword) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+
+  const users = db.getUsers();
+  const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+
+  if (!user) {
+    return res.status(404).json({ error: "User not found with this email." });
+  }
+
+  const isMatch = db.verifyPassword(currentPassword, user.passwordHash, user.passwordSalt);
+  if (!isMatch) {
+    return res.status(401).json({ error: "Current password verification failed." });
+  }
+
+  const creds = db.createCredentials(newPassword);
+  user.passwordHash = creds.hash;
+  user.passwordSalt = creds.salt;
+  user.forcePasswordChange = false;
+  user.refreshToken = ""; // clear session on forced update
+  db.save();
+
+  res.json({ message: "Password forced change completed successfully. You can now log in!" });
 });
 
 // MULTI-TENANT GYM OWNER ONBOARDING REGISTRATION

@@ -158,32 +158,32 @@ export function RegistrationView({ onBackToLogin, onRegistrationSuccess }: Regis
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 flex flex-col justify-center items-center px-4 py-8 relative bg-[radial-gradient(circle_at_top_right,_#1a1a1a_0%,_#000_100%)] selection:bg-orange-500 selection:text-black md:overflow-y-auto">
+    <div className="min-h-screen bg-[#0A0A0A] text-zinc-100 flex flex-col justify-center items-center px-4 py-8 relative bg-[radial-gradient(circle_at_top_right,_#1a1a1a_0%,_#000_100%)] selection:bg-[#FF7A00] selection:text-black md:overflow-y-auto">
       {/* Visual Ambient Orbs */}
-      <div className="absolute top-10 left-10 w-80 h-80 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute top-10 left-10 w-80 h-80 bg-[#FF7A00]/5 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-10 right-10 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-2xl bg-zinc-950/70 border border-zinc-800/80 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl relative z-10">
+      <div className="w-full max-w-2xl bg-[#171717]/95 border border-[#2A2A2A] backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-2xl relative z-10">
         
         {/* Header Header */}
-        <div className="flex justify-between items-center pb-5 border-b border-zinc-900 mb-6">
+        <div className="flex justify-between items-center pb-5 border-b border-[#2A2A2A] mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center font-bold text-black text-xl italic shadow-[0_0_15px_rgba(249,115,22,0.3)]">
-              GF
+            <div className="w-9 h-9 bg-gradient-to-br from-[#FF7A00] to-amber-600 rounded-lg flex items-center justify-center font-bold text-black text-xs shadow-[0_0_15px_rgba(255,122,0,0.3)]">
+              IG
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
                 Register Gym Workspace
               </h1>
-              <p className="text-[10px] text-zinc-500 font-mono tracking-wider uppercase">
-                SaaS Multi-Tenant Onboarding
+              <p className="text-[10px] text-[#A0A0A0] font-mono tracking-wider uppercase">
+                ImveloGYM SaaS Enterprise Onboarding
               </p>
             </div>
           </div>
           
           {step <= 3 && (
             <div className="flex items-center gap-1.5 font-mono text-xs">
-              <span className="text-orange-500 font-bold">{step}</span>
+              <span className="text-[#FF7A00] font-bold">{step}</span>
               <span className="text-zinc-600">/</span>
               <span className="text-zinc-400">3</span>
             </div>
@@ -556,12 +556,12 @@ export function RegistrationView({ onBackToLogin, onRegistrationSuccess }: Regis
                 </div>
                 <div className="space-y-1.5 pt-2">
                   <h2 className="text-2xl font-black text-white font-mono tracking-tight uppercase">Workspace Approved!</h2>
-                  <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
-                    We are completing the automatic tenant setup for <span className="text-orange-500 font-bold">{gymName}</span>. Instantiating isolated rosters, core settings structures and default subscription values...
+                  <p className="text-xs text-[#A0A0A0] max-w-sm mx-auto leading-relaxed">
+                    We are completing the automatic tenant setup for <span className="text-[#FF7A00] font-bold">{gymName}</span>. Instantiating isolated rosters, core settings structures and default subscription values...
                   </p>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-zinc-500 uppercase font-mono tracking-widest pt-4">
-                  <RotateCw className="w-3.5 h-3.5 animate-spin text-orange-500 font-bold" /> Routing dashboard keys override...
+                  <RotateCw className="w-3.5 h-3.5 animate-spin text-[#FF7A00] font-bold" /> Routing dashboard keys override...
                 </div>
               </motion.div>
             )}

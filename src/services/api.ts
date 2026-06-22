@@ -11,7 +11,7 @@ const api = axios.create({
 // Auto inject session token from local storage
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("gymflow_token");
+    const token = localStorage.getItem("imvelogym_token") || localStorage.getItem("gymflow_token");
     if (token) {
       if (config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -33,9 +33,12 @@ api.interceptors.response.use(
       // Unless they are visiting authentication endpoints
       const url = error.config.url || "";
       if (!url.includes("/auth/login") && !url.includes("/auth/reset")) {
+        localStorage.removeItem("imvelogym_token");
+        localStorage.removeItem("imvelogym_user");
         localStorage.removeItem("gymflow_token");
         localStorage.removeItem("gymflow_user");
         // We can do window.location.reload() or let App state trigger redirect
+        window.dispatchEvent(new Event("imvelogym-unauthorized"));
         window.dispatchEvent(new Event("gymflow-unauthorized"));
       }
     }
