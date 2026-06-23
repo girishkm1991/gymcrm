@@ -234,9 +234,75 @@ export default function PaymentsView({ user, setTab }: PaymentsViewProps) {
     }
   };
 
+  // Test Connection
+  const [testPhone, setTestPhone] = useState("");
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+
+  const handleTestConnection = async () => {
+    if (!testPhone) return;
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const response = await api.post("/whatsapp/test-connection", { phone: testPhone });
+      const { success, status, error } = response.data;
+      if (success) {
+        setTestResult({
+          success: true,
+          message: `Sample message dispatched successfully! Gateway status: ${status}.`
+        });
+        showToast("success", "✓ Test message sent successfully!");
+      } else {
+        setTestResult({
+          success: false,
+          message: error || `Gateway rejected delivery. Status: ${status}`
+        });
+        showToast("error", "✗ Test connection failed.");
+      }
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || err.message || "Network request failed.";
+      setTestResult({
+        success: false,
+        message: errMsg
+      });
+      showToast("error", "✗ Test connection failed.");
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   // Simulated Reminder triggers
-  const handleSendReminder = (memberName: string) => {
-    showToast("success", `✓ Reminder dispatched successfully to ${memberName} via Meta Cloud SMS API!`);
+  const handleSendReminder = async (memberId: string, memberName: string) => {
+    setSendingReminderId(memberId);
+    try {
+      const response = await api.post("/whatsapp/send-reminder", { memberId });
+      const { success, status, error, whatsappUrl } = response.data;
+      
+      if (success || status === "Pending") {
+        if (status === "Pending" && whatsappUrl) {
+          window.open(whatsappUrl, "_blank");
+          showToast("success", `✓ Message prepared! WhatsApp Web manual fallback triggered for ${memberName}.`);
+        } else {
+          showToast("success", `✓ WhatsApp reminder successfully sent to ${memberName}!`);
+        }
+      } else {
+        if (error && error.includes("configured")) {
+          showToast("error", "WhatsApp gateway is not configured. Please configure WhatsApp settings first.");
+        } else {
+          showToast("error", `Failed to send reminder: ${error || "Unrecognized gateway error."}`);
+        }
+      }
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || err.message || "Request failed.";
+      if (errMsg.includes("configured")) {
+        showToast("error", "WhatsApp gateway is not configured. Please configure WhatsApp settings first.");
+      } else {
+        showToast("error", `Error: ${errMsg}`);
+      }
+    } finally {
+      setSendingReminderId(null);
+    }
   };
 
   // Bulk actions
@@ -788,10 +854,11 @@ export default function PaymentsView({ user, setTab }: PaymentsViewProps) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleSendReminder(m.fullName)}
-                          className="py-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-emerald-400 hover:text-emerald-350 rounded-lg text-center cursor-pointer transition flex items-center justify-center gap-1.5"
+                          onClick={() => handleSendReminder(m.id, m.fullName)}
+                          disabled={sendingReminderId === m.id}
+                          className="py-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-emerald-400 hover:text-emerald-350 rounded-lg text-center cursor-pointer transition flex items-center justify-center gap-1.5 disabled:opacity-50"
                         >
-                          <Send className="w-2.5 h-2.5" /> Send Reminder
+                          <Send className="w-2.5 h-2.5" /> {sendingReminderId === m.id ? "Sending..." : "Send Reminder"}
                         </button>
                       </div>
 
@@ -1153,10 +1220,11 @@ export default function PaymentsView({ user, setTab }: PaymentsViewProps) {
                   <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
                     <button
                       type="button"
-                      onClick={() => handleSendReminder(r.memberName)}
-                      className="py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl text-center cursor-pointer transition uppercase"
+                      onClick={() => handleSendReminder(r.memberId, r.memberName)}
+                      disabled={sendingReminderId === r.memberId}
+                      className="py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl text-center cursor-pointer transition uppercase disabled:opacity-50 text-[10px]"
                     >
-                      Instant Reminder Dispatch
+                      {sendingReminderId === r.memberId ? "Sending..." : "Instant Dispatch"}
                     </button>
                     <button
                       type="button"
@@ -1247,6 +1315,34 @@ export default function PaymentsView({ user, setTab }: PaymentsViewProps) {
               >
                 {settingsSaving ? "Updating parameters..." : "Save parameters"}
               </button>
+
+              <div className="pt-4 border-t border-zinc-800 space-y-3">
+                <span className="text-[9.5px] uppercase font-bold text-zinc-400 block font-mono">Test WhatsApp Connection</span>
+                <p className="text-[10px] text-zinc-500 font-sans">Send a sample message to verify your API Gateway credentials before automations.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. +919999999999"
+                    value={testPhone || ""}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    className="flex-1 bg-zinc-950 border border-zinc-800 p-2.5 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-[#FF8800]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testingConnection || !testPhone}
+                    className="px-4 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-amber-500 text-[#FF8800] font-black rounded-xl text-[10px] uppercase transition cursor-pointer"
+                  >
+                    {testingConnection ? "Testing..." : "Test"}
+                  </button>
+                </div>
+                {testResult && (
+                  <div className={`p-3 rounded-xl text-[10.5px] font-mono border ${testResult.success ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"}`}>
+                    <span className="font-bold uppercase block mb-1">{testResult.success ? "✓ Connection Live" : "✗ Diagnostic Warning"}</span>
+                    {testResult.message}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

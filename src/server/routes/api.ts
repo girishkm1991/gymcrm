@@ -76,6 +76,7 @@ import { SettingsService } from "../services/settings.service";
 import { CameraAttendanceService } from "../services/camera.service";
 import { AuditService } from "../services/audit.service";
 import { CommunicationService } from "../services/communication.service";
+import { WhatsAppService } from "../services/whatsapp.service";
 
 const router = Router();
 
@@ -1856,32 +1857,75 @@ router.get("/whatsapp/settings", authenticate, (req: Request, res: Response) => 
 router.put("/whatsapp/settings", authenticate, authorize(["GYM_OWNER"]), (req: Request, res: Response) => {
   const user = (req as any).user;
   const gymId = user.gymId || "gym-1";
-  const { provider, apiKey, phoneNumberId, wabaId, status } = req.body;
+  const { provider, apiKey, phoneNumberId, wabaId, status, providerType, metaAccessToken, metaPhoneNumberId, webSessionId } = req.body;
   
+  let finalProvider = provider;
+  if (providerType) {
+    if (providerType === "MetaCloudApi") finalProvider = "Meta";
+    else if (providerType === "TwilioSMS") finalProvider = "Twilio";
+    else if (providerType === "WhatsAppWebSync") finalProvider = "WhatsAppWeb";
+    else finalProvider = providerType;
+  }
+  if (!finalProvider) finalProvider = "WhatsAppWeb";
+
+  const finalApiKey = apiKey !== undefined ? apiKey : (metaAccessToken !== undefined ? metaAccessToken : "");
+  const finalPhoneId = phoneNumberId !== undefined ? phoneNumberId : (metaPhoneNumberId !== undefined ? metaPhoneNumberId : "");
+  const finalWabaId = wabaId !== undefined ? wabaId : (webSessionId !== undefined ? webSessionId : "");
+
   let config = db.getWhatsappSettings().find(c => c.gymId === gymId);
   if (!config) {
     config = {
       id: "set-wa-" + Math.floor(100000 + Math.random() * 900000),
       gymId,
-      provider: provider || "WhatsAppWeb",
-      apiKey: apiKey || "",
-      phoneNumberId: phoneNumberId || "",
-      wabaId: wabaId || "",
-      status: status || "Inactive",
+      provider: finalProvider as any,
+      apiKey: finalApiKey,
+      phoneNumberId: finalPhoneId,
+      wabaId: finalWabaId,
+      status: "Active",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     db.getWhatsappSettings().push(config);
   } else {
-    if (provider) config.provider = provider;
-    config.apiKey = apiKey !== undefined ? apiKey : config.apiKey;
-    config.phoneNumberId = phoneNumberId !== undefined ? phoneNumberId : config.phoneNumberId;
-    config.wabaId = wabaId !== undefined ? wabaId : config.wabaId;
-    if (status) config.status = status;
+    config.provider = finalProvider as any;
+    config.apiKey = finalApiKey;
+    config.phoneNumberId = finalPhoneId;
+    config.wabaId = finalWabaId;
+    config.status = "Active";
     config.updatedAt = new Date().toISOString();
   }
   db.save();
   res.json(config);
+});
+
+router.post("/whatsapp/send-reminder", authenticate, async (req: Request, res: Response) => {
+  const { memberId } = req.body;
+  if (!memberId) {
+    return res.status(400).json({ error: "Required field: memberId" });
+  }
+  try {
+    const result = await WhatsAppService.sendReminder(memberId);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to process reminder dispatch." });
+  }
+});
+
+router.post("/whatsapp/test-connection", authenticate, authorize(["GYM_OWNER"]), async (req: Request, res: Response) => {
+  const { phone } = req.body;
+  const user = (req as any).user;
+  const gymId = user.gymId || "gym-1";
+  
+  if (!phone) {
+    return res.status(400).json({ error: "Phone number is required for test dispatch." });
+  }
+
+  try {
+    const result = await WhatsAppService.sendTestMessage(phone, gymId);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Test dispatch failed." });
+  }
 });
 
 router.get("/whatsapp/templates", authenticate, (req: Request, res: Response) => {
@@ -1988,7 +2032,7 @@ router.get("/communication/logs", authenticate, (req: Request, res: Response) =>
   res.json(logs);
 });
 
-router.post("/communication/send", authenticate, (req: Request, res: Response) => {
+router.post("/communication/send", authenticate, async (req: Request, res: Response) => {
   const user = (req as any).user;
   const gymId = user.gymId || "gym-1";
   const { memberId, type, category, variables } = req.body;
@@ -2020,32 +2064,15 @@ router.post("/communication/send", authenticate, (req: Request, res: Response) =
     ...variables
   });
 
-  const logId = "log-" + Math.floor(100000 + Math.random() * 900000);
-  const newLog: CommunicationLog = {
-    id: logId,
-    gymId,
-    memberId,
-    memberName: memberUser.fullName,
-    type: "WhatsApp",
-    category,
-    message: parsedMsg,
-    status: "Sent",
-    sentAt: new Date().toISOString()
-  };
-
-  db.getCommunicationLogs().push(newLog);
-  db.addTimelineEntry(gymId, memberId, "Timeline", "Message Sent (" + category + ")", parsedMsg.substring(0, 80) + "...");
-  db.save();
-
   const phone = memberUser.phone || "";
-  const cleanedPhone = phone.replace(/[^0-9]/g, "");
-  const whatsappUrl = `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(parsedMsg)}`;
+  const result = await WhatsAppService.sendWhatsAppMessage(phone, parsedMsg, gymId, memberId, memberUser.fullName, category);
 
   res.json({
-    success: true,
+    success: result.success || result.status === "Pending",
     message: parsedMsg,
-    whatsappUrl,
-    log: newLog
+    whatsappUrl: result.whatsappUrl,
+    status: result.status,
+    error: result.error
   });
 });
 
