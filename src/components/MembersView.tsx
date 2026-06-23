@@ -43,6 +43,17 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   const [payments, setPayments] = useState<any[]>([]);
   const [filterDuesOnly, setFilterDuesOnly] = useState<boolean>(false);
 
+  // Helper function to format date strings to e.g. "23 Jun 2027" dynamically
+  const format = (dateInput: Date | string) => {
+    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+    if (!d || isNaN(d.getTime())) return "—";
+    const day = String(d.getDate()).padStart(2, "0");
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = monthNames[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
   // Helper function to calculate membership status
   const getMembershipStatus = (endDateStr?: string) => {
     if (!endDateStr || endDateStr === "Unlimited" || endDateStr.includes("Unlimited") || endDateStr === "N/A" || endDateStr === "Unlimited Period" || endDateStr === "Unlimited Session") {
@@ -126,16 +137,58 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
     const memStatus = getMembershipStatus(endDateStr);
 
+    let localNextDueDate: string | null = null;
+    if (unpaidPayments.length > 0) {
+      const validPayments = unpaidPayments.filter(p => p.dueDate);
+      if (validPayments.length > 0) {
+        const sorted = validPayments.sort((a, b) => {
+          const t1 = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+          const t2 = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+          return t1 - t2;
+        });
+        localNextDueDate = sorted[0].dueDate;
+      }
+    } else if (m.activePlanId && (endDateStr || m.endDate)) {
+      localNextDueDate = endDateStr || m.endDate;
+    } else if (m.activePlanId) {
+      const plan = plans.find(p => p.id === m.activePlanId);
+      if (plan) {
+        const baseDate = m.joiningDate || m.startDate || new Date().toISOString().split("T")[0];
+        const cleanDate = baseDate.includes("T") ? baseDate.split("T")[0] : baseDate;
+        const start = new Date(cleanDate);
+        if (!isNaN(start.getTime())) {
+          const end = new Date(start);
+          switch (plan.duration) {
+            case "Monthly":
+              end.setMonth(end.getMonth() + 1);
+              break;
+            case "Quarterly":
+              end.setMonth(end.getMonth() + 3);
+              break;
+            case "Half Yearly":
+              end.setMonth(end.getMonth() + 6);
+              break;
+            case "Annual":
+              end.setFullYear(end.getFullYear() + 1);
+              break;
+            default:
+              end.setDate(end.getDate() + 30);
+              break;
+          }
+          localNextDueDate = end.toISOString().split("T")[0];
+        }
+      }
+    }
+
     if (pendingAmount === 0) {
       return {
         status: "FEE PAID",
         pendingAmount: 0,
-        dueDate: null,
+        dueDate: localNextDueDate,
         badgeColor: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
       };
     }
 
-    let soonestDueDate: Date | null = null;
     let hasPassed = false;
     let isDueSoon = false;
 
@@ -145,44 +198,30 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
     const sevenDaysFromToday = new Date(today);
     sevenDaysFromToday.setDate(today.getDate() + 7);
 
-    unpaidPayments.forEach(p => {
-      if (!p.dueDate) return;
-      const d = new Date(p.dueDate);
-      if (isNaN(d.getTime())) return;
-      d.setHours(0, 0, 0, 0);
-
-      if (!soonestDueDate || d < soonestDueDate) {
-        soonestDueDate = d;
+    if (localNextDueDate) {
+      const d = new Date(localNextDueDate);
+      if (!isNaN(d.getTime())) {
+        d.setHours(0, 0, 0, 0);
+        if (d < today) {
+          hasPassed = true;
+        } else if (d <= sevenDaysFromToday) {
+          isDueSoon = true;
+        }
       }
-
-      if (d < today) {
-        hasPassed = true;
-      } else if (d <= sevenDaysFromToday) {
-        isDueSoon = true;
-      }
-    });
-
-    const nextDueDateStr = soonestDueDate ? (soonestDueDate as Date).toISOString().split("T")[0] : null;
+    }
 
     if (hasPassed) {
       return {
         status: "OVERDUE",
         pendingAmount,
-        dueDate: nextDueDateStr,
+        dueDate: localNextDueDate,
         badgeColor: "bg-red-500/10 text-red-500 border border-red-500/20"
-      };
-    } else if (isDueSoon || soonestDueDate) {
-      return {
-        status: "DUE SOON",
-        pendingAmount,
-        dueDate: nextDueDateStr,
-        badgeColor: "bg-amber-500/10 text-amber-500 border border-amber-500/20"
       };
     } else {
       return {
         status: "DUE SOON",
         pendingAmount,
-        dueDate: nextDueDateStr,
+        dueDate: localNextDueDate,
         badgeColor: "bg-amber-500/10 text-amber-500 border border-amber-500/20"
       };
     }
@@ -1463,8 +1502,8 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                                 ₹{feeStatus.pendingAmount.toFixed(2)}
                               </span>
                             </td>
-                            <td className="py-3 px-5 text-center font-mono text-zinc-400">
-                              {feeStatus.dueDate || "—"}
+                            <td className="py-3 px-5 text-center font-mono text-zinc-350">
+                              {feeStatus.dueDate ? format(feeStatus.dueDate) : "—"}
                             </td>
                             <td className="py-3 px-5 text-right">
                               <div className="flex justify-end items-center gap-1.5 flex-wrap md:flex-nowrap">

@@ -658,46 +658,61 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
     let pendingAmount = 0;
     let nextDueDate: string | null = null;
 
+    const unpaidPayments = memberPayments.filter((p) => p.status === "Pending" || p.status === "Overdue");
+    const totalUnpaid = unpaidPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    pendingAmount = totalUnpaid;
+
+    // Calculate nextDueDate
+    if (unpaidPayments.length > 0) {
+      const validPayments = unpaidPayments.filter((p) => p.dueDate);
+      if (validPayments.length > 0) {
+        const sorted = validPayments.sort((a, b) => {
+          const t1 = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+          const t2 = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+          return t1 - t2;
+        });
+        nextDueDate = sorted[0].dueDate;
+      }
+    } else if (profile?.activePlanId && profile?.endDate) {
+      nextDueDate = profile.endDate;
+    } else if (profile?.activePlanId && plan) {
+      const baseDate = profile.joiningDate || profile.startDate || usr.createdAt || new Date().toISOString().split("T")[0];
+      const cleanDate = baseDate.includes("T") ? baseDate.split("T")[0] : baseDate;
+      try {
+        nextDueDate = MembershipService.calculateEndDate(cleanDate, plan.duration);
+      } catch (err) {
+        nextDueDate = null;
+      }
+    }
+
+    // Determine feeStatus
     const hasNoPlan = !profile?.activePlanId;
     const hasNoPayments = memberPayments.length === 0;
 
     if (hasNoPlan || hasNoPayments) {
       feeStatus = "NOT CONFIGURED";
+    } else if (totalUnpaid === 0) {
+      feeStatus = "FEE PAID";
     } else {
-      const unpaidPayments = memberPayments.filter((p) => p.status === "Pending" || p.status === "Overdue");
-      const totalUnpaid = unpaidPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      pendingAmount = totalUnpaid;
+      if (nextDueDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-      if (totalUnpaid === 0) {
-        feeStatus = "FEE PAID";
-      } else {
-        let soonestDueDate: Date | null = null;
-        unpaidPayments.forEach((p) => {
-          if (!p.dueDate) return;
-          const d = new Date(p.dueDate);
-          if (isNaN(d.getTime())) return;
-          if (!soonestDueDate || d < soonestDueDate) {
-            soonestDueDate = d;
-          }
-        });
+        const soonestDateOnly = new Date(nextDueDate);
+        soonestDateOnly.setHours(0, 0, 0, 0);
 
-        if (soonestDueDate) {
-          nextDueDate = (soonestDueDate as Date).toISOString().split("T")[0];
+        const diffTime = soonestDateOnly.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-
-          const soonestDateOnly = new Date(soonestDueDate);
-          soonestDateOnly.setHours(0, 0, 0, 0);
-
-          if (soonestDateOnly < today) {
-            feeStatus = "OVERDUE";
-          } else {
-            feeStatus = "DUE SOON";
-          }
+        if (soonestDateOnly < today) {
+          feeStatus = "OVERDUE";
+        } else if (diffDays <= 7) {
+          feeStatus = "DUE SOON";
         } else {
           feeStatus = "DUE SOON";
         }
+      } else {
+        feeStatus = "DUE SOON";
       }
     }
 
