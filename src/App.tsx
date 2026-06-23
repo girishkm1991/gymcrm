@@ -110,7 +110,7 @@ export default function App() {
     { id: "MEMBERS", label: "Members CRM", icon: Users, roles: ["SUPER_ADMIN", "GYM_OWNER", "TRAINER", "RECEPTIONIST"] },
     { id: "ATTENDANCE", label: "Attendance Log", icon: Calendar, roles: ["SUPER_ADMIN", "GYM_OWNER", "RECEPTIONIST"] },
     { id: "PAYMENTS", label: "Payments Billing", icon: DollarSign, roles: ["SUPER_ADMIN", "GYM_OWNER", "RECEPTIONIST"] },
-    { id: "WORKOUT", label: "Workouts & Diet", icon: Dumbbell, roles: ["SUPER_ADMIN", "GYM_OWNER", "TRAINER", "MEMBER"] },
+    { id: "WORKOUT", label: "Workouts & Diet", icon: Dumbbell, roles: ["SUPER_ADMIN", "GYM_OWNER", "TRAINER", "RECEPTIONIST", "MEMBER"] },
     { id: "STAFF", label: "Staff Invites", icon: Sliders, roles: ["SUPER_ADMIN", "GYM_OWNER"] },
     { id: "SAAS", label: "Multi-Tenant SaaS", icon: Globe, roles: ["SUPER_ADMIN"] },
     { id: "REPORTS", label: "Reports & Audits", icon: FileText, roles: ["SUPER_ADMIN", "GYM_OWNER", "RECEPTIONIST"] },

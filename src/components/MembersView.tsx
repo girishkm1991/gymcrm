@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import api from "../services/api";
 import { Member, MembershipPlan } from "../types";
+import PremiumMemberProfile from "./PremiumMemberProfile";
 
 interface MembersViewProps {
   user: any;
@@ -2705,6 +2706,28 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
       {/* 4. DETAILED PROFILE VIEW (12-Tab System Context) */}
       {activeForm === "PROFILE" && selectedMember && (
+        <PremiumMemberProfile
+          user={user}
+          selectedMember={selectedMember}
+          memberQrCode={memberQrCode}
+          progressHistory={progressHistory}
+          photosList={photosList}
+          timelineEntries={timelineEntries}
+          membershipHistory={membershipHistory}
+          trainers={trainers}
+          plans={plans}
+          onBack={() => setActiveForm("LIST")}
+          onRefresh={() => {
+            reloadProfileSubsets(selectedMember.id);
+            handleViewProfile(selectedMember.id);
+          }}
+          onOpenEdit={(member) => handleOpenEdit(member)}
+          api={api}
+        />
+      )}
+
+      {/* DISABLED OLD PROFILE FORM TO AVOID INTERFERENCE */}
+      {false && activeForm === "PROFILE" && selectedMember && (
         <div className="space-y-6">
           
           {/* Top Return bar */}
