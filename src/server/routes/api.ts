@@ -641,6 +641,7 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
   const users = db.getUsers();
   const members = db.getMembers();
   const plans = db.getMembershipPlans();
+  const payments = db.getPayments();
 
   // Filter users by role MEMBER and correct gymId (if not super admin)
   let gymMembers = users.filter((u) => u.role === "MEMBER" && (user.role === "SUPER_ADMIN" || u.gymId === gymId));
@@ -650,6 +651,58 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
     const profile = members.find((p) => p.id === usr.id);
     const plan = profile ? plans.find((pl) => pl.id === profile.activePlanId) : null;
     const trainerRef = profile ? users.find((t) => t.id === profile.trainerId) : null;
+
+    const memberPayments = payments.filter((p) => p.memberId === usr.id || (profile?.memberId && p.memberId === profile.memberId));
+
+    let feeStatus = "NOT CONFIGURED";
+    let pendingAmount = 0;
+    let nextDueDate: string | null = null;
+
+    const hasNoPlan = !profile?.activePlanId;
+    const hasNoPayments = memberPayments.length === 0;
+
+    if (hasNoPlan || hasNoPayments) {
+      feeStatus = "NOT CONFIGURED";
+    } else {
+      const unpaidPayments = memberPayments.filter((p) => p.status === "Pending" || p.status === "Overdue");
+      const totalUnpaid = unpaidPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      pendingAmount = totalUnpaid;
+
+      if (totalUnpaid === 0) {
+        feeStatus = "FEE PAID";
+      } else {
+        let soonestDueDate: Date | null = null;
+        unpaidPayments.forEach((p) => {
+          if (!p.dueDate) return;
+          const d = new Date(p.dueDate);
+          if (isNaN(d.getTime())) return;
+          if (!soonestDueDate || d < soonestDueDate) {
+            soonestDueDate = d;
+          }
+        });
+
+        if (soonestDueDate) {
+          nextDueDate = (soonestDueDate as Date).toISOString().split("T")[0];
+
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const soonestDateOnly = new Date(soonestDueDate);
+          soonestDateOnly.setHours(0, 0, 0, 0);
+
+          if (soonestDateOnly < today) {
+            feeStatus = "OVERDUE";
+          } else {
+            feeStatus = "DUE SOON";
+          }
+        } else {
+          feeStatus = "DUE SOON";
+        }
+      }
+    }
+
+    // Temporary console logging to verify calculated values
+    console.log(`[Fee Status Check] Member: ${usr.fullName}, feeStatus: ${feeStatus}, pendingAmount: ${pendingAmount}, nextDueDate: ${nextDueDate}`);
 
     return {
       id: usr.id,
@@ -674,6 +727,9 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
       activePlanId: profile?.activePlanId || null,
       planName: plan ? plan.name : "No Plan",
       endDate: profile?.endDate || "",
+      feeStatus,
+      pendingAmount,
+      nextDueDate,
     };
   });
 

@@ -81,6 +81,24 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
         badgeColor: "bg-[#6B7280]/10 text-[#6B7280] border border-[#6B7280]/20 font-bold"
       };
     }
+
+    if (m.feeStatus !== undefined && m.feeStatus !== null) {
+      let badgeColor = "bg-[#6B7280]/10 text-[#6B7280] border border-[#6B7280]/20 font-bold";
+      if (m.feeStatus === "FEE PAID") {
+        badgeColor = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+      } else if (m.feeStatus === "DUE SOON") {
+        badgeColor = "bg-amber-500/10 text-amber-500 border border-amber-500/20";
+      } else if (m.feeStatus === "OVERDUE") {
+        badgeColor = "bg-red-500/10 text-red-500 border border-red-500/20";
+      }
+      return {
+        status: m.feeStatus,
+        pendingAmount: Number(m.pendingAmount) || 0,
+        dueDate: m.nextDueDate || null,
+        badgeColor
+      };
+    }
+
     const mIdStr = m.memberId || "";
     const memberPayments = payments.filter(p => p.memberId === memberId || (mIdStr && p.memberId === mIdStr));
 
@@ -1380,9 +1398,8 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                   <thead>
                     <tr className="border-b border-zinc-800 bg-zinc-950/40 text-zinc-400 text-[10px] font-mono tracking-widest uppercase">
                       <th className="py-4 px-5">ID & Member</th>
-                      <th className="py-4 px-5">Email & Phone</th>
-                      <th className="py-4 px-5">Active Plan & Coach</th>
-                      <th className="py-4 px-5 text-center">Membership Expiry</th>
+                      <th className="py-4 px-5">Email</th>
+                      <th className="py-4 px-5">Active Plan</th>
                       <th className="py-4 px-5 text-center">Membership Status</th>
                       <th className="py-4 px-5 text-center">Fee Status</th>
                       <th className="py-4 px-5 text-center">Pending Amount</th>
@@ -1393,7 +1410,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                   <tbody className="divide-y divide-zinc-800 text-xs text-zinc-300">
                     {filteredMembers.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="text-center py-10 text-zinc-500 font-mono">
+                        <td colSpan={8} className="text-center py-10 text-zinc-500 font-mono">
                           No member records match the active criteria.
                         </td>
                       </tr>
@@ -1420,15 +1437,12 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                               </div>
                             </td>
                             <td className="py-3 px-5">
-                              <div className="text-white">{m.email}</div>
+                              <div className="text-white font-medium">{m.email}</div>
                               <div className="text-[10px] text-zinc-400 mt-0.5 font-mono">{m.phone}</div>
                             </td>
                             <td className="py-3 px-5">
-                              <div className="font-medium text-white">{m.planName || "No active plan"}</div>
-                              <div className="text-[10px] text-zinc-400 mt-0.5">Coach: {m.trainerName || "—"}</div>
-                            </td>
-                            <td className="py-3 px-5 text-center text-zinc-300 font-semibold font-mono">
-                              {m.endDate || "Unlimited"}
+                              <div className="font-semibold text-white">{m.planName || "No active plan"}</div>
+                              <div className="text-[10px] text-zinc-400 mt-0.5 font-mono">Coach: {m.trainerName || "—"} | Exp: {m.endDate || "Unlimited"}</div>
                             </td>
                             <td className="py-3 px-5 text-center">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
