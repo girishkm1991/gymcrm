@@ -602,9 +602,8 @@ class CRMDatabase {
       this.isMySQLActive = true;
       console.log("[CRMDatabase] MySQL Database integration active and fully loaded with connection pool.");
     } catch (err: any) {
-      console.error("[CRMDatabase] Failed to initialize MySQL connection pool. Error details:", err?.message || err);
       this.isMySQLActive = false;
-      console.log("[CRMDatabase] Running with local JSON fallback (SaaS high-resiliency mode enabled).");
+      console.log("[CRMDatabase] MySQL Database not active/configured. Running with local high-fidelity JSON data fallback (SaaS high-resiliency mode enabled).");
     }
   }
 

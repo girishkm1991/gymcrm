@@ -673,6 +673,7 @@ router.get("/members", authenticate, (req: Request, res: Response) => {
       trainerName: trainerRef ? trainerRef.fullName : "Unassigned",
       activePlanId: profile?.activePlanId || null,
       planName: plan ? plan.name : "No Plan",
+      endDate: profile?.endDate || "",
     };
   });
 

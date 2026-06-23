@@ -40,6 +40,117 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [trainers, setTrainers] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [filterDuesOnly, setFilterDuesOnly] = useState<boolean>(false);
+
+  // Helper function to calculate membership status
+  const getMembershipStatus = (endDateStr?: string) => {
+    if (!endDateStr || endDateStr === "Unlimited" || endDateStr.includes("Unlimited") || endDateStr === "N/A" || endDateStr === "Unlimited Period" || endDateStr === "Unlimited Session") {
+      return "ACTIVE";
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const expiry = new Date(endDateStr);
+    if (isNaN(expiry.getTime())) {
+      return "ACTIVE";
+    }
+    expiry.setHours(0, 0, 0, 0);
+
+    const sevenDaysFromToday = new Date(today);
+    sevenDaysFromToday.setDate(today.getDate() + 7);
+
+    if (expiry < today) {
+      return "EXPIRED";
+    } else if (expiry <= sevenDaysFromToday) {
+      return "EXPIRING SOON";
+    } else {
+      return "ACTIVE";
+    }
+  };
+
+  // Helper function to calculate Fee Status and billing properties
+  const getFeeStatusDetails = (memberId: string, endDateStr?: string) => {
+    const m = members.find(x => x.id === memberId);
+    const mIdStr = m ? m.memberId : "";
+    const memberPayments = payments.filter(p => p.memberId === memberId || (mIdStr && p.memberId === mIdStr));
+
+    if (memberPayments.length === 0) {
+      return {
+        status: "NOT CONFIGURED",
+        pendingAmount: 0,
+        dueDate: null,
+        badgeColor: "bg-zinc-800 text-zinc-400 border border-zinc-700"
+      };
+    }
+
+    const unpaidPayments = memberPayments.filter(p => p.status === "Pending" || p.status === "Overdue");
+    const pendingAmount = unpaidPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const memStatus = getMembershipStatus(endDateStr);
+
+    if (pendingAmount === 0) {
+      return {
+        status: "FEE PAID",
+        pendingAmount: 0,
+        dueDate: null,
+        badgeColor: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+      };
+    }
+
+    let soonestDueDate: Date | null = null;
+    let hasPassed = false;
+    let isDueSoon = false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sevenDaysFromToday = new Date(today);
+    sevenDaysFromToday.setDate(today.getDate() + 7);
+
+    unpaidPayments.forEach(p => {
+      if (!p.dueDate) return;
+      const d = new Date(p.dueDate);
+      if (isNaN(d.getTime())) return;
+      d.setHours(0, 0, 0, 0);
+
+      if (!soonestDueDate || d < soonestDueDate) {
+        soonestDueDate = d;
+      }
+
+      if (d < today) {
+        hasPassed = true;
+      } else if (d <= sevenDaysFromToday) {
+        isDueSoon = true;
+      }
+    });
+
+    const nextDueDateStr = soonestDueDate ? (soonestDueDate as Date).toISOString().split("T")[0] : null;
+
+    if (hasPassed) {
+      return {
+        status: "OVERDUE",
+        pendingAmount,
+        dueDate: nextDueDateStr,
+        badgeColor: "bg-red-500/10 text-red-500 border border-red-500/20"
+      };
+    } else if (isDueSoon || soonestDueDate) {
+      return {
+        status: "DUE SOON",
+        pendingAmount,
+        dueDate: nextDueDateStr,
+        badgeColor: "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+      };
+    } else {
+      return {
+        status: "DUE SOON",
+        pendingAmount,
+        dueDate: nextDueDateStr,
+        badgeColor: "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+      };
+    }
+  };
 
   // Searching & Filtering parameters
   const [search, setSearch] = useState("");
@@ -363,7 +474,8 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
   async function loadData() {
     try {
-      const q = `?search=${search}&status=${statusFilter}&gender=${genderFilter}&page=${page}&limit=10`;
+      const limitVal = filterDuesOnly ? 1000 : 10;
+      const q = `?search=${search}&status=${statusFilter}&gender=${genderFilter}&page=${page}&limit=${limitVal}`;
       const response = await api.get(`/members${q}`);
       setMembers(response.data.data);
       setTotalPages(response.data.pagination.totalPages || 1);
@@ -373,6 +485,9 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
       const staffRes = await api.get("/staff");
       setTrainers(staffRes.data.filter((u: any) => u.role === "TRAINER"));
+
+      const paymentsRes = await api.get("/payments/list");
+      setPayments(paymentsRes.data);
     } catch (err) {
       console.error("Failed to load members directory.", err);
     }
@@ -380,7 +495,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
   useEffect(() => {
     loadData();
-  }, [search, statusFilter, genderFilter, page, activeForm]);
+  }, [search, statusFilter, genderFilter, page, activeForm, filterDuesOnly]);
 
   useEffect(() => {
     if (initialForm) {
@@ -1066,217 +1181,280 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
     <div className="space-y-6 text-zinc-100">
       
       {/* 1. LIST VIEW OF ALL MEMBERS */}
-      {activeForm === "LIST" && (
-        <>
-          {/* Header */}
-          <div className="border-b border-zinc-850 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              {setTab && (
-                <button
-                  type="button"
-                  onClick={() => setTab("DASHBOARD")}
-                  className="p-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 hover:text-white rounded-xl text-zinc-400 transition cursor-pointer"
-                  title="Back to Dashboard"
-                >
-                  <ArrowLeft className="w-4 h-4 text-zinc-400" />
-                </button>
-              )}
-              <div>
-                <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                  <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
-                  Member Directory CRM
-                </h1>
-                <p className="text-sm text-zinc-400 mt-1">
-                  Database lookup of full system users, physical stats, trainer assigners, and active plans.
-                </p>
-              </div>
-            </div>
-            {user.role !== "TRAINER" && (
-              <button
-                type="button"
-                onClick={handleOpenAdd}
-                className="px-4.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-[0_4px_15px_rgba(245,158,11,0.25)]"
-              >
-                <Plus className="w-4 h-4 text-black stroke-[3]" /> Register Member
-              </button>
-            )}
-          </div>
+      {activeForm === "LIST" && (() => {
+        const allUnpaidPayments = payments.filter((p: any) => p.status === "Pending" || p.status === "Overdue");
+        const totalPendingAmount = allUnpaidPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        const membersWithPendingFees = new Set(allUnpaidPayments.map((p: any) => p.memberId)).size;
 
-          {/* Search/Filters Hub */}
-          <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search member ID, name, email, phone..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-white text-xs focus:border-amber-500 focus:outline-none transition-all placeholder:text-zinc-500"
-              />
-            </div>
-            <div className="flex gap-3">
-              <div className="flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5 text-amber-500" />
-                <span className="text-[10px] font-bold font-mono tracking-wider text-zinc-400 uppercase">Status</span>
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white"
-              >
-                <option value="ALL">All Status</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Expired">Expired</option>
-                <option value="Pending">Pending</option>
-              </select>
+        const filteredMembers = members.filter((m) => {
+          if (!filterDuesOnly) return true;
+          const feeStatus = getFeeStatusDetails(m.id, m.endDate);
+          return feeStatus.pendingAmount > 0;
+        });
 
-              <select
-                value={genderFilter}
-                onChange={(e) => setGenderFilter(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white"
-              >
-                <option value="ALL">All Genders</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-          </div>
-
-          {/* CRM Roster Grid Table */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-zinc-800 bg-zinc-950/40 text-zinc-400 text-[10px] font-mono tracking-widest uppercase">
-                    <th className="py-4 px-5">ID & Member</th>
-                    <th className="py-4 px-5">Email & Phone</th>
-                    <th className="py-4 px-5">Metric Score (BMI)</th>
-                    <th className="py-4 px-5">Active Plan</th>
-                    <th className="py-4 px-5">Assigned Coach</th>
-                    <th className="py-4 px-5 text-center">Status</th>
-                    <th className="py-4 px-5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800 text-xs text-zinc-300">
-                  {members.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-10 text-zinc-500 font-mono">
-                        No member records match the active criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    members.map((m) => {
-                      const bmiVal = getBmiDesc(m.bmi || 24);
-                      return (
-                        <tr key={m.id} className="hover:bg-zinc-850/50 transition-colors">
-                          <td className="py-3 px-5">
-                            <div className="flex items-center gap-3">
-                              <img
-                                referrerPolicy="no-referrer"
-                                src={m.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"}
-                                alt={m.fullName}
-                                className="w-10 h-10 rounded-xl object-cover border border-zinc-850 shrink-0"
-                              />
-                              <div>
-                                <div className="font-bold text-white text-sm">{m.fullName}</div>
-                                <div className="text-[10px] font-bold font-mono text-amber-500 mt-0.5">{m.memberId}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-5">
-                            <div className="text-white">{m.email}</div>
-                            <div className="text-[10px] text-zinc-400 mt-0.5 font-mono">{m.phone}</div>
-                          </td>
-                          <td className="py-3 px-5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-black text-white">{m.bmi || "—"}</span>
-                              {m.bmi && <span className={`text-[10px] font-semibold ${bmiVal.color}`}>({bmiVal.text})</span>}
-                            </div>
-                            <div className="text-[10px] text-zinc-500 mt-0.5">{m.height || "—"}cm • {m.weight || "—"}kg</div>
-                          </td>
-                          <td className="py-3 px-5 text-zinc-200 font-medium">
-                            {m.planName || "No active plan"}
-                          </td>
-                          <td className="py-3 px-5 text-zinc-400">
-                            {m.trainerName || "—"}
-                          </td>
-                          <td className="py-3 px-5 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
-                              m.status === "Active" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                              m.status === "Expired" ? "bg-red-500/10 text-red-500 border border-red-500/10" :
-                              m.status === "Pending" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
-                              "bg-zinc-800 text-zinc-400 border border-zinc-750"
-                            }`}>
-                              {m.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-5 text-right">
-                            <div className="flex justify-end gap-1.5">
-                              <button
-                                type="button"
-                                title="View Member Profile"
-                                onClick={() => handleViewProfile(m.id)}
-                                className="p-2 bg-zinc-950 hover:bg-zinc-850 text-amber-500 border border-zinc-800 rounded-xl"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                              {user.role !== "TRAINER" && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEdit(m)}
-                                  className="p-2 bg-zinc-950 hover:bg-zinc-850 text-white border border-zinc-800 rounded-xl"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {user.role === "GYM_OWNER" && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMember(m.id, m.fullName)}
-                                  className="p-2 bg-zinc-950 hover:bg-red-500/20 text-red-400 border border-zinc-800 hover:border-red-500/20 rounded-xl"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="bg-zinc-950/60 border-t border-zinc-800 px-5 py-3.5 flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-500">Page {page} of {totalPages} pages</span>
-                <div className="flex gap-2">
+        return (
+          <>
+            {/* Header */}
+            <div className="border-b border-zinc-850 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                {setTab && (
                   <button
                     type="button"
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
-                    className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white cursor-pointer"
+                    onClick={() => setTab("DASHBOARD")}
+                    className="p-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 hover:text-white rounded-xl text-zinc-400 transition cursor-pointer"
+                    title="Back to Dashboard"
                   >
-                    Previous
+                    <ArrowLeft className="w-4 h-4 text-zinc-400" />
                   </button>
-                  <button
-                    type="button"
-                    disabled={page === totalPages}
-                    onClick={() => setPage(page + 1)}
-                    className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white cursor-pointer"
-                  >
-                    Next
-                  </button>
+                )}
+                <div>
+                  <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                    <span className="w-2.5 h-6 bg-amber-500 rounded-full inline-block"></span>
+                    Member Directory CRM
+                  </h1>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    Database lookup of full system users, physical stats, trainer assigners, and active plans.
+                  </p>
                 </div>
               </div>
-            )}
-          </div>
-        </>
-      )}
+              {user.role !== "TRAINER" && (
+                <button
+                  type="button"
+                  onClick={handleOpenAdd}
+                  className="px-4.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-[0_4px_15px_rgba(245,158,11,0.25)]"
+                >
+                  <Plus className="w-4 h-4 text-black stroke-[3]" /> Register Member
+                </button>
+              )}
+            </div>
+
+            {/* Search/Filters Hub */}
+            <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search member ID, name, email, phone..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-white text-xs focus:border-amber-500 focus:outline-none transition-all placeholder:text-zinc-500"
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-[10px] font-bold font-mono tracking-wider text-zinc-400 uppercase">Status</span>
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white"
+                >
+                  <option value="ALL">All Status</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Pending">Pending</option>
+                </select>
+
+                <select
+                  value={genderFilter}
+                  onChange={(e) => setGenderFilter(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white"
+                >
+                  <option value="ALL">All Genders</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Summary Banner */}
+            <div 
+              onClick={() => setFilterDuesOnly(!filterDuesOnly)}
+              className={`cursor-pointer border rounded-2xl p-4 transition-all duration-300 ${
+                filterDuesOnly 
+                  ? "bg-amber-500/10 border-amber-500 shadow-[0_4px_20px_rgba(245,158,11,0.15)]" 
+                  : "bg-zinc-900 border-zinc-800 hover:bg-zinc-850/30 hover:border-zinc-700"
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div className="flex flex-wrap items-center gap-8">
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">Total Pending Amount</div>
+                    <div className="text-2xl font-black text-red-500 font-sans">
+                      ₹{totalPendingAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <div className="hidden sm:block w-px h-8 bg-zinc-800" />
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">Members With Pending Fees</div>
+                    <div className="text-2xl font-black text-amber-500 font-sans">
+                      {membersWithPendingFees}
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 flex items-center gap-2">
+                  {filterDuesOnly ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-black text-[10px] font-bold font-mono rounded-xl uppercase">
+                      <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
+                      DUES ONLY FILTER ACTIVE (CLICK TO RESET)
+                    </span>
+                  ) : (
+                    <span className="text-[9.5px] font-mono font-bold text-zinc-500 hover:text-zinc-300 bg-zinc-950 px-3 py-1 rounded-xl border border-zinc-850">
+                      CLICK TO FILTER DUES
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* CRM Roster Grid Table */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-zinc-800 bg-zinc-950/40 text-zinc-400 text-[10px] font-mono tracking-widest uppercase">
+                      <th className="py-4 px-5">ID & Member</th>
+                      <th className="py-4 px-5">Email & Phone</th>
+                      <th className="py-4 px-5">Active Plan & Coach</th>
+                      <th className="py-4 px-5 text-center">Membership Expiry</th>
+                      <th className="py-4 px-5 text-center">Membership Status</th>
+                      <th className="py-4 px-5 text-center">Fee Status</th>
+                      <th className="py-4 px-5 text-center">Pending Amount</th>
+                      <th className="py-4 px-5 text-center">Next Due Date</th>
+                      <th className="py-4 px-5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800 text-xs text-zinc-300">
+                    {filteredMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-10 text-zinc-500 font-mono">
+                          No member records match the active criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredMembers.map((m) => {
+                        const bmiVal = getBmiDesc(m.bmi || 24);
+                        const memStatus = getMembershipStatus(m.endDate);
+                        const feeStatus = getFeeStatusDetails(m.id, m.endDate);
+
+                        return (
+                          <tr key={m.id} className="hover:bg-zinc-850/50 transition-colors">
+                            <td className="py-3 px-5">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  referrerPolicy="no-referrer"
+                                  src={m.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"}
+                                  alt={m.fullName}
+                                  className="w-10 h-10 rounded-xl object-cover border border-zinc-850 shrink-0"
+                                />
+                                <div>
+                                  <div className="font-bold text-white text-sm">{m.fullName}</div>
+                                  <div className="text-[10px] font-bold font-mono text-amber-500 mt-0.5">{m.memberId}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-5">
+                              <div className="text-white">{m.email}</div>
+                              <div className="text-[10px] text-zinc-400 mt-0.5 font-mono">{m.phone}</div>
+                            </td>
+                            <td className="py-3 px-5">
+                              <div className="font-medium text-white">{m.planName || "No active plan"}</div>
+                              <div className="text-[10px] text-zinc-400 mt-0.5">Coach: {m.trainerName || "—"}</div>
+                            </td>
+                            <td className="py-3 px-5 text-center text-zinc-300 font-semibold font-mono">
+                              {m.endDate || "Unlimited"}
+                            </td>
+                            <td className="py-3 px-5 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
+                                memStatus === "ACTIVE" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                                memStatus === "EXPIRING SOON" ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
+                                "bg-red-500/10 text-red-500 border border-red-500/10"
+                              }`}>
+                                {memStatus}
+                              </span>
+                            </td>
+                            <td className="py-3 px-5 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${feeStatus.badgeColor}`}>
+                                {feeStatus.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-5 text-center font-semibold text-sm">
+                              <span className={feeStatus.pendingAmount === 0 ? "text-emerald-400 font-mono" : "text-red-500 font-mono"}>
+                                ₹{feeStatus.pendingAmount.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-5 text-center font-mono text-zinc-400">
+                              {feeStatus.dueDate || "—"}
+                            </td>
+                            <td className="py-3 px-5 text-right">
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  title="View Member Profile"
+                                  onClick={() => handleViewProfile(m.id)}
+                                  className="p-2 bg-zinc-950 hover:bg-zinc-850 text-amber-500 border border-zinc-800 rounded-xl"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                {user.role !== "TRAINER" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEdit(m)}
+                                    className="p-2 bg-zinc-950 hover:bg-zinc-850 text-white border border-zinc-800 rounded-xl"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {user.role === "GYM_OWNER" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMember(m.id, m.fullName)}
+                                    className="p-2 bg-zinc-950 hover:bg-red-500/20 text-red-400 border border-zinc-800 hover:border-red-500/20 rounded-xl"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="bg-zinc-950/60 border-t border-zinc-800 px-5 py-3.5 flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-500">Page {page} of {totalPages} pages</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={page === 1}
+                      onClick={() => setPage(page - 1)}
+                      className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      disabled={page === totalPages}
+                      onClick={() => setPage(page + 1)}
+                      className="px-3 py-1.5 bg-zinc-90 w-20 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg disabled:opacity-30 disabled:hover:border-zinc-800 text-white cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* 2. REGISTER MEMBER (ADD - PREMIUM ONBOARDING WIZARD) */}
       {activeForm === "ADD" && (
