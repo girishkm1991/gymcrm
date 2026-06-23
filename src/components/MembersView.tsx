@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, Search, Filter, Edit, Eye, X, ArrowLeft, Dumbbell, Activity, ShieldAlert, 
   Check, Trash2, Heart, Calendar, Clock, DollarSign, Camera, CreditCard, 
   RefreshCw, Printer, AlertTriangle, Shield, Archive, ListTodo, PlusCircle, UserCheck,
-  Layers, MessageSquare, Send, ExternalLink
+  Layers, MessageSquare, Send, ExternalLink, Award, Sparkles, CheckSquare
 } from "lucide-react";
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line 
@@ -88,9 +88,6 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   
   // Premium Onboarding Wizard States
   const [occupation, setOccupation] = useState("");
-  const [registrationStep, setRegistrationStep] = useState<number>(1);
-  const [registering, setRegistering] = useState(false);
-  const [successMember, setSuccessMember] = useState<any>(null);
 
   // Advanced Physical Details
   const [height, setHeight] = useState<number>(175);
@@ -114,6 +111,207 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   const [locker, setLocker] = useState("");
   const [ptPackage, setPtPackage] = useState("");
   const [trainerNotes, setTrainerNotes] = useState("");
+  const [registrationStep, setRegistrationStep] = useState<number>(1);
+  const [registering, setRegistering] = useState(false);
+  const [successMember, setSuccessMember] = useState<any>(null);
+  const [stepDirection, setStepDirection] = useState<number>(1);
+  const [stepError, setStepError] = useState<string | null>(null);
+  const [draftExists, setDraftExists] = useState<boolean>(false);
+
+  // Mock Payment & Camera states
+  const [mockCardNumber, setMockCardNumber] = useState("");
+  const [mockCardExpiry, setMockCardExpiry] = useState("");
+  const [mockCardCVV, setMockCardCVV] = useState("");
+  const [mockCardName, setMockCardName] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "CARD" | "TRANSFER">("CASH");
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+  
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const startCamera = async () => {
+    setCameraActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 400, height: 300 } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err) {
+      console.error("Failed to start camera:", err);
+      // Suppress blocking native prompts in sandboxed iframes
+      setCameraActive(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const capturePhotoSnapshot = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 400;
+      canvas.height = 300;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.scale(-1, 1);
+        ctx.drawImage(videoRef.current, -400, 0, 400, 300);
+        const dataUrl = canvas.toDataURL("image/jpeg");
+        setPhoto(dataUrl);
+      }
+      stopCamera();
+    }
+  };
+
+  // Load draft check on mount & whenever draft might change
+  useEffect(() => {
+    const saved = localStorage.getItem("imvelogym_onboarding_draft");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.fullName) {
+          setDraftExists(true);
+        } else {
+          setDraftExists(false);
+        }
+      } catch (e) {
+        setDraftExists(false);
+      }
+    } else {
+      setDraftExists(false);
+    }
+  }, [activeForm]);
+
+  // Clean form draft from local storage
+  const clearDraft = () => {
+    localStorage.removeItem("imvelogym_onboarding_draft");
+    setDraftExists(false);
+  };
+
+  // Perform load from localStorage
+  const handleLoadDraft = () => {
+    try {
+      const saved = localStorage.getItem("imvelogym_onboarding_draft");
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft.fullName) setFullName(draft.fullName);
+        if (draft.email) setEmail(draft.email);
+        if (draft.phone) setPhone(draft.phone);
+        if (draft.gender) setGender(draft.gender);
+        if (draft.dob) setDob(draft.dob);
+        if (draft.bloodGroup) setBloodGroup(draft.bloodGroup);
+        if (draft.occupation) setOccupation(draft.occupation);
+        if (draft.address) setAddress(draft.address);
+        if (draft.emergencyContactName) setEmergencyContactName(draft.emergencyContactName);
+        if (draft.emergencyContactPhone) setEmergencyContactPhone(draft.emergencyContactPhone);
+        if (draft.height) setHeight(draft.height);
+        if (draft.weight) setWeight(draft.weight);
+        if (draft.bodyFat) setBodyFat(draft.bodyFat);
+        if (draft.chest) setChest(draft.chest);
+        if (draft.waist) setWaist(draft.waist);
+        if (draft.hip) setHip(draft.hip);
+        if (draft.biceps) setBiceps(draft.biceps);
+        if (draft.thigh) setThigh(draft.thigh);
+        if (draft.activePlanId) setActivePlanId(draft.activePlanId);
+        if (draft.trainerId) setTrainerId(draft.trainerId);
+        if (draft.locker) setLocker(draft.locker);
+        if (draft.ptPackage) setPtPackage(draft.ptPackage);
+        if (draft.photo) setPhoto(draft.photo);
+        if (draft.fitnessGoal) setFitnessGoal(draft.fitnessGoal);
+        if (draft.medicalConditions) setMedicalConditions(draft.medicalConditions);
+        if (draft.injuries) setInjuries(draft.injuries);
+        if (draft.allergies) setAllergies(draft.allergies);
+        if (draft.medications) setMedications(draft.medications);
+        if (draft.medicalWarnings) setMedicalWarnings(draft.medicalWarnings);
+        if (draft.registrationStep) setRegistrationStep(draft.registrationStep);
+        if (draft.trainerNotes) setTrainerNotes(draft.trainerNotes);
+        setStepError(null);
+      }
+    } catch (e) {
+      console.error("Failed to restore onboarding draft:", e);
+    }
+  };
+
+  // Auto-Save effect when activeForm is "ADD"
+  useEffect(() => {
+    if (activeForm === "ADD") {
+      const draftObj = {
+        fullName,
+        email,
+        phone,
+        gender,
+        dob,
+        bloodGroup,
+        occupation,
+        address,
+        emergencyContactName,
+        emergencyContactPhone,
+        height,
+        weight,
+        bodyFat,
+        chest,
+        waist,
+        hip,
+        biceps,
+        thigh,
+        activePlanId,
+        trainerId,
+        locker,
+        ptPackage,
+        photo,
+        fitnessGoal,
+        medicalConditions,
+        injuries,
+        allergies,
+        medications,
+        medicalWarnings,
+        registrationStep,
+        trainerNotes,
+      };
+      localStorage.setItem("imvelogym_onboarding_draft", JSON.stringify(draftObj));
+    }
+  }, [
+    activeForm,
+    fullName,
+    email,
+    phone,
+    gender,
+    dob,
+    bloodGroup,
+    occupation,
+    address,
+    emergencyContactName,
+    emergencyContactPhone,
+    height,
+    weight,
+    bodyFat,
+    chest,
+    waist,
+    hip,
+    biceps,
+    thigh,
+    activePlanId,
+    trainerId,
+    locker,
+    ptPackage,
+    photo,
+    fitnessGoal,
+    medicalConditions,
+    injuries,
+    allergies,
+    medications,
+    medicalWarnings,
+    registrationStep,
+    trainerNotes,
+  ]);
+
+
 
   // Sub-dialog states for Membership life transitions
   const [isRenewOpen, setIsRenewOpen] = useState(false);
@@ -388,10 +586,36 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
     reader.readAsDataURL(file);
   };
 
+  const calculateEndDate = (duration: string, startDateStr: string): string => {
+    const date = new Date(startDateStr);
+    if (isNaN(date.getTime())) return "";
+    if (duration === "Monthly") {
+      date.setMonth(date.getMonth() + 1);
+    } else if (duration === "Quarterly") {
+      date.setMonth(date.getMonth() + 3);
+    } else if (duration === "Half Yearly") {
+      date.setMonth(date.getMonth() + 6);
+    } else if (duration === "Annual" || duration === "Annually") {
+      date.setFullYear(date.getFullYear() + 1);
+    } else {
+      date.setMonth(date.getMonth() + 1); // fallback to monthly
+    }
+    return date.toISOString().split("T")[0];
+  };
+
   const handleCreateMember = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     try {
-      await api.post("/members", {
+      setRegistering(true);
+      setStepError(null);
+
+      const todayStr = new Date().toISOString().split("T")[0];
+      const selectedPlanObj = plans.find(p => p.id === activePlanId);
+      const calculatedEnd = selectedPlanObj 
+        ? calculateEndDate(selectedPlanObj.duration, todayStr) 
+        : "";
+
+      const response = await api.post("/members", {
         fullName,
         email,
         phone,
@@ -420,12 +644,202 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
         medicalWarnings,
         locker,
         ptPackage,
-        trainerNotes
+        trainerNotes,
+        startDate: todayStr,
+        endDate: calculatedEnd,
+        occupation
       });
-      setActiveForm("LIST");
+
+      // Fetch the details of the newly created member to show on success screen
+      const userId = response.data.userId;
+      const memberDetailRes = await api.get(`/members/${userId}`);
+      
+      setSuccessMember(memberDetailRes.data);
+      clearDraft();
     } catch (err: any) {
-      alert(err.response?.data?.error || "Error storing member registry.");
+      setStepError(err.response?.data?.error || "Error storing member registry. Check fields.");
+    } finally {
+      setRegistering(false);
     }
+  };
+
+  const validateStepAt = (stepNum: number): string | null => {
+    switch (stepNum) {
+      case 2: // Personal Information
+        if (!fullName.trim() || fullName.trim().length < 2) {
+          return "Please enter a valid full name.";
+        }
+        if (!email.trim() || !/.+@.+\..+/.test(email)) {
+          return "Please enter a valid email address.";
+        }
+        if (!phone.trim() || phone.trim().length < 5) {
+          return "Please enter a valid phone number (at least 5 digits).";
+        }
+        break;
+      case 4: // Physicals
+        if (!height || height <= 0 || height > 300) {
+          return "Please enter a valid stature/height between 50cm and 300cm.";
+        }
+        if (!weight || weight <= 0 || weight > 500) {
+          return "Please enter a valid weight between 10kg and 500kg.";
+        }
+        break;
+      default:
+        break;
+    }
+    return null;
+  };
+
+  const handlePrintNewOnboardedCard = (m: any) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Please allow popups to print the membership card.");
+      return;
+    }
+    const cardHtml = `
+      <html>
+      <head>
+        <title>ImveloGYM - Membership Card</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+          body { font-family: 'Inter', sans-serif; background-color: #0c0a09; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+          .card { width: 350px; height: 210px; background: linear-gradient(135deg, #18181b 0%, #09090b 100%); border: 1px solid #27272a; border-radius: 16px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden; }
+          .card::after { content: ''; position: absolute; bottom: -50px; right: -50px; width: 150px; height: 150px; background: radial-gradient(circle, rgba(245,158,11,0.08) 0%, transparent 70%); border-radius: 50%; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-b: 1px solid #27272a; padding-bottom: 10px; margin-bottom: 15px; }
+          .brand { font-weight: 800; font-size: 16px; color: #f59e0b; letter-spacing: 1px; }
+          .logo-text { font-size: 8px; color: #71717a; font-family: monospace; letter-spacing: 0.5px; }
+          .body { display: flex; gap: 15px; }
+          .photo { width: 75px; height: 75px; border-radius: 10px; object-fit: cover; border: 1.5px solid #f59e0b; }
+          .info { display: flex; flex-direction: column; justify-content: space-between; height: 75px; }
+          .name { font-weight: 700; font-size: 14px; color: #fff; margin-bottom: 1px; }
+          .id { font-family: monospace; color: #f59e0b; font-size: 11px; margin-bottom: 4px; font-weight: bold;}
+          .detail-row { font-size: 10px; color: #a1a1aa; line-height: 1.3; }
+          .detail-val { font-weight: 600; color: #e4e4e7; }
+          .footer { position: absolute; bottom: 12px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #52525b; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="header">
+            <div class="brand">ImveloGYM</div>
+            <div class="logo-text">OFFICIAL ACCESS BADGE</div>
+          </div>
+          <div class="body">
+            <img class="photo" src="${m.photo || 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop'}" referrerPolicy="no-referrer" />
+            <div class="info">
+              <div>
+                <div class="name">${m.fullName}</div>
+                <div class="id">${m.memberId || 'N/A'}</div>
+              </div>
+              <div>
+                <div class="detail-row">PLAN: <span class="detail-val">${m.planName || "Active Plan"}</span></div>
+                <div class="detail-row" style="margin-top: 2px;">VALID THRU: <span class="detail-val">${m.endDate || "Unlimited"}</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="footer">
+            <div>STATUS: ACTIVE</div>
+            <div>VERIFIED CRM CLOUD API</div>
+          </div>
+        </div>
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(cardHtml);
+    printWindow.document.close();
+  };
+
+  const handlePrintNewOnboardedReceipt = (m: any) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Please allow popups to print the receipt.");
+      return;
+    }
+    const planPrice = plans.find(p => p.id === activePlanId)?.price || "0.00";
+    const receiptHtml = `
+      <html>
+      <head>
+        <title>Receipt - ImveloGYM</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+          body { font-family: 'Inter', sans-serif; background-color: #fff; color: #1c1917; padding: 40px; margin: 0; line-height: 1.5; }
+          .invoice-box { max-width: 600px; margin: auto; padding: 25px; border: 1px solid #e7e5e4; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e7e5e4; padding-bottom: 15px; margin-bottom: 20px; }
+          .brand { font-size: 24px; font-weight: 800; color: #d97706; letter-spacing: -0.5px; }
+          .invoice-details { text-align: right; font-size: 11px; color: #57534e; }
+          .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #78716c; letter-spacing: 1px; margin-bottom: 8px; border-bottom: 1px solid #f5f5f4; padding-bottom: 4px; }
+          .grid { display: grid; grid-template-cols: 150px 1fr; gap: 8px 15px; margin-bottom: 20px; font-size: 13px; }
+          .label { color: #78716c; }
+          .val { font-weight: 600; color: #1c1917; }
+          .item-table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 25px; }
+          .item-table th { background-color: #f5f5f4; text-align: left; padding: 10px; font-size: 11px; color: #57534e; font-weight: bold; text-transform: uppercase; }
+          .item-table td { padding: 12px 10px; border-bottom: 1px solid #f5f5f4; font-size: 13px; }
+          .totals { font-size: 15px; border-top: 2px solid #e7e5e4; padding-top: 15px; text-align: right; color: #1c1917; font-weight: 800; }
+          .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #a8a29e; border-top: 1px dashed #e7e5e4; padding-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-box">
+          <div class="header">
+            <div>
+              <div class="brand">ImveloGYM</div>
+              <div style="font-size: 11px; color: #78716c; margin-top: 2px;">Premium Fitness CRM & Onboarding Suite</div>
+            </div>
+            <div class="invoice-details">
+              <strong>TAX RECEIPT</strong><br/>
+              Receipt #: REC-${Math.floor(100000 + Math.random() * 900000)}<br/>
+              Date: ${new Date().toISOString().split("T")[0]}<br/>
+              Status: PAID
+            </div>
+          </div>
+          
+          <div class="section-title">Customer Registration Details</div>
+          <div class="grid">
+            <div class="label">Member Name</div><div class="val">${m.fullName}</div>
+            <div class="label">Member Registry ID</div><div class="val">${m.memberId || 'N/A'}</div>
+            <div class="label">Email Address</div><div class="val">${m.email}</div>
+            <div class="label">Contact Number</div><div class="val">${m.phone}</div>
+          </div>
+
+          <div class="section-title">Purchased Membership Plan</div>
+          <table class="item-table">
+            <thead>
+              <tr>
+                <th>Registration Item & Description</th>
+                <th style="text-align: right;">Cost Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <strong>${m.planName || "Selected Active Plan"} Plan Subscription</strong><br/>
+                  <span style="font-size: 10px; color: #78716c;">Membership range interval: ${m.startDate || new Date().toISOString().split("T")[0]} to ${m.endDate || "N/A"}</span>
+                </td>
+                <td style="text-align: right; font-weight: 600;">$${planPrice}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="totals">
+            Total Charged Dues: $${planPrice} &nbsp;(PAID)
+          </div>
+
+          <div class="footer">
+            Thank you for registering at ImveloGYM. Your fitness journey starts now.<br/>
+            For cloud support, contact billing@imvelogym.com.
+          </div>
+        </div>
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(receiptHtml);
+    printWindow.document.close();
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -863,410 +1277,1221 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
         </>
       )}
 
-      {/* 2. REGISTER MEMBER (ADD) */}
+      {/* 2. REGISTER MEMBER (ADD - PREMIUM ONBOARDING WIZARD) */}
       {activeForm === "ADD" && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-4xl mx-auto space-y-6">
-          <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <PlusCircle className="text-amber-500 w-5 h-5 animate-pulse" /> Register New Gymnasium Member
-            </h2>
-            <button
-              type="button"
-              onClick={handleBackFromAdd}
-              className="p-2 hover:bg-zinc-800 rounded-xl"
+        <div className="max-w-4xl mx-auto">
+          {successMember ? (
+            /* PROFESSIONAL SUCCESS SCREEN */
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="bg-zinc-900 border border-zinc-805 rounded-3xl p-8 space-y-8 shadow-2xl relative overflow-hidden"
             >
-              <X className="w-5 h-5 text-zinc-400" />
-            </button>
-          </div>
-
-          <form onSubmit={handleCreateMember} className="space-y-6">
-            
-            {/* Section A: Personal Information */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
-                A. Personal Security Profile
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">FULL NAME *</label>
-                  <input
-                    type="text"
-                    placeholder="Chris Hemsworth"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                    required
-                  />
+              <div className="absolute top-0 left-0 w-full h-[6px] bg-gradient-to-r from-emerald-500 via-amber-500 to-amber-600" />
+              
+              {/* Confetti & Success Greeting */}
+              <div className="text-center space-y-3">
+                <div className="inline-flex items-center justify-center p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-emerald-500 animate-bounce">
+                  <Check className="w-10 h-10 stroke-[3]" />
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">EMAIL ADDRESS *</label>
-                  <input
-                    type="email"
-                    placeholder="chris@hollywood.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">PHONE DIRECTORY *</label>
-                  <input
-                    type="text"
-                    placeholder="+1-555-123-4567"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">GENDER</label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 focus:outline-none text-zinc-300 focus:border-amber-500"
-                  >
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">DATE OF BIRTH</label>
-                  <input
-                    type="date"
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white font-mono focus:border-amber-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">BLOOD GROUP</label>
-                  <select
-                    value={bloodGroup}
-                    onChange={(e) => setBloodGroup(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300 focus:border-amber-500"
-                  >
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">OCCUPATION</label>
-                  <input
-                    type="text"
-                    placeholder="Software Engineer, Athlete, Doctor"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">EMERGENCY CONTACT NAME</label>
-                  <input
-                    type="text"
-                    placeholder="Relationship Contact Name"
-                    value={emergencyContactName}
-                    onChange={(e) => setEmergencyContactName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-zinc-400 font-bold">EMERGENCY PHONE</label>
-                  <input
-                    type="text"
-                    placeholder="Relationship Contact Telephone"
-                    value={emergencyContactPhone}
-                    onChange={(e) => setEmergencyContactPhone(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white"
-                  />
-                </div>
+                <h2 className="text-2xl font-black text-white tracking-tight">Onboarding Registered Successfully!</h2>
+                <p className="text-sm text-zinc-400 max-w-md mx-auto">
+                  A new secure profile has been compiled and added to ImveloGYM systems. All active permissions are live.
+                </p>
               </div>
 
-              <div className="space-y-1 text-xs">
-                <label className="text-zinc-400 font-bold">STREET RESIDENTIAL ADDRESS</label>
-                <textarea
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Street No, Area, City, State..."
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white h-16 resize-none focus:border-amber-500"
-                ></textarea>
-              </div>
-            </div>
-
-            {/* Section B: Physical & Biomarker Metrics */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
-                B. Biometrics & Physical Stats
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                <div className="space-y-1">
-                  <label className="text-zinc-400">HEIGHT (cm)</label>
-                  <input
-                    type="number"
-                    value={height}
-                    onChange={(e) => setHeight(Number(e.target.value) || 175)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">WEIGHT (kg)</label>
-                  <input
-                    type="number"
-                    value={weight}
-                    onChange={(e) => setWeight(Number(e.target.value) || 75)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">BODY FAT %</label>
-                  <input
-                    type="number"
-                    value={bodyFat}
-                    onChange={(e) => setBodyFat(Number(e.target.value) || 15)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="p-3.5 bg-zinc-950 rounded-xl border border-zinc-850 flex justify-between items-center col-span-1">
-                  <div>
-                    <span className="text-[10px] text-zinc-500 font-bold block">AUTO BMI:</span>
-                    <span className="text-lg font-black text-white">{autoBMI}</span>
+              {/* ID Card Display Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-zinc-950 p-6 rounded-2xl border border-zinc-800">
+                {/* Visual ID Badging Side */}
+                <div className="md:col-span-5 flex flex-col items-center justify-center border-r border-zinc-850 pr-0 md:pr-6 pb-6 md:pb-0 space-y-4">
+                  <div className="relative">
+                    <img
+                      src={successMember.photo || "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=250&auto=format&fit=crop"}
+                      alt={successMember.fullName}
+                      referrerPolicy="no-referrer"
+                      className="w-32 h-32 rounded-2xl object-cover border-2 border-amber-500 shadow-md shadow-amber-500/10"
+                    />
+                    <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-black text-[9px] font-black tracking-widest px-2.5 py-1 rounded-full border border-zinc-950">
+                      SYS LIVE
+                    </div>
                   </div>
-                  <span className={`text-[10px] font-bold ${getBmiDesc(autoBMI).color}`}>
-                    {getBmiDesc(autoBMI).text}
+                  <div className="text-center space-y-1">
+                    <div className="text-zinc-500 text-[10px] font-bold font-mono tracking-widest">MEMBER IDENTIFICATION</div>
+                    <div className="text-white text-xl font-black tracking-widest font-mono">
+                      {successMember.memberId || "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Account Details Side */}
+                <div className="md:col-span-7 space-y-4 flex flex-col justify-center">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                    <div>
+                      <span className="text-zinc-500 font-bold block uppercase tracking-wider text-[10px]">Full Name</span>
+                      <span className="text-white text-sm font-semibold">{successMember.fullName}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 font-bold block uppercase tracking-wider text-[10px]">Email Address</span>
+                      <span className="text-zinc-300 text-sm font-semibold truncate block">{successMember.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 font-bold block uppercase tracking-wider text-[10px]">Membership Plan</span>
+                      <span className="text-amber-400 text-sm font-bold">{successMember.planName || "No Selected Plan"}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 font-bold block uppercase tracking-wider text-[10px]">Assigned Coach</span>
+                      <span className="text-zinc-300 text-sm font-semibold">{successMember.trainerName || "Self Coaching"}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 font-bold block uppercase tracking-wider text-[10px]">Valid Until</span>
+                      <span className="text-zinc-300 font-mono text-sm font-semibold">{successMember.endDate || "Unlimited Period"}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 font-bold block uppercase tracking-wider text-[10px]">Payment Status</span>
+                      <span className="inline-flex items-center gap-1.5 mt-0.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                        <Check className="w-3 h-3 stroke-[3]" /> PAID (ONBOARDING DUES)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handlePrintNewOnboardedCard(successMember)}
+                  className="flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer"
+                >
+                  <Award className="w-4 h-4 text-amber-500" /> Card Badge
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrintNewOnboardedReceipt(successMember)}
+                  className="flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer"
+                >
+                  <DollarSign className="w-4 h-4 text-emerald-500" /> Print Receipt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // reset all params
+                    setFullName("");
+                    setEmail("");
+                    setPhone("");
+                    setGender("Male");
+                    setDob("1995-01-01");
+                    setBloodGroup("O+");
+                    setAddress("");
+                    setEmergencyContactName("");
+                    setEmergencyContactPhone("");
+                    setHeight(175);
+                    setWeight(75);
+                    setBodyFat(15);
+                    setChest(95);
+                    setWaist(80);
+                    setHip(90);
+                    setBiceps(35);
+                    setThigh(55);
+                    setFitnessGoal("Lean Muscle Gain");
+                    setMedicalConditions("");
+                    setInjuries("");
+                    setAllergies("");
+                    setMedications("");
+                    setMedicalWarnings("");
+                    setLocker("");
+                    setPtPackage("");
+                    setTrainerNotes("");
+                    setOccupation("");
+                    setMockCardNumber("");
+                    setMockCardExpiry("");
+                    setMockCardCVV("");
+                    setMockCardName("");
+                    setPaymentMethod("CASH");
+                    setSuccessMember(null);
+                    setRegistrationStep(1);
+                  }}
+                  className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer col-span-1 shadow-lg shadow-amber-500/10"
+                >
+                  <PlusCircle className="w-4 h-4" /> Register Another
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuccessMember(null);
+                    if (backTarget === "DASHBOARD" && onBack) {
+                      onBack();
+                    } else {
+                      setActiveForm("LIST");
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" /> Return Home
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            /* PREMIUM ONBOARDING WIZARD COMPONENT */
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl relative overflow-hidden">
+              {/* Wizard Brand Header */}
+              <div className="flex justify-between items-center border-b border-zinc-850 pb-5">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black tracking-widest font-mono text-amber-500 uppercase">
+                    IMVELOGYM COMMERCIAL SAAS
+                  </span>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <Activity className="text-amber-500 w-5 h-5 animate-pulse" /> Onboarding & Member Registration
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBackFromAdd}
+                  className="p-2.5 bg-zinc-950 hover:bg-zinc-850 rounded-xl transition border border-zinc-850 cursor-pointer"
+                >
+                  <X className="w-4 h-4 text-zinc-400" />
+                </button>
+              </div>
+
+              {/* Progress Indicator Slider */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-zinc-400 font-bold">
+                    Step {registrationStep} of 9: <span className="text-amber-400 font-black">{
+                      registrationStep === 1 ? "Welcome Guest" :
+                      registrationStep === 2 ? "Personal Info" :
+                      registrationStep === 3 ? "Address & Emergency" :
+                      registrationStep === 4 ? "Physical measurements" :
+                      registrationStep === 5 ? "Membership & Coaching" :
+                      registrationStep === 6 ? "Merchant Checkout" :
+                      registrationStep === 7 ? "Photography Snapshot" :
+                      registrationStep === 8 ? "Medical & Health profile" : "Review Summary"
+                    }</span>
+                  </span>
+                  <span className="text-zinc-500 font-mono font-bold">
+                    {Math.round(((registrationStep - 1) / 8) * 100)}% Completed
                   </span>
                 </div>
+                {/* Horizontal progress bar */}
+                <div className="w-full bg-zinc-955 h-[6px] rounded-full overflow-hidden border border-zinc-850/50">
+                  <motion.div
+                    className="bg-gradient-to-r from-amber-500 to-amber-600 h-full"
+                    initial={{ width: "5%" }}
+                    animate={{ width: `${Math.max(5, ((registrationStep - 1) / 8) * 100)}%` }}
+                    transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                  />
+                </div>
 
-                <div className="space-y-1">
-                  <label className="text-zinc-400">CHEST (cm)</label>
-                  <input
-                    type="number"
-                    value={chest}
-                    onChange={(e) => setChest(Number(e.target.value) || 0)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">WAIST (cm)</label>
-                  <input
-                    type="number"
-                    value={waist}
-                    onChange={(e) => setWaist(Number(e.target.value) || 0)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">HIP (cm)</label>
-                  <input
-                    type="number"
-                    value={hip}
-                    onChange={(e) => setHip(Number(e.target.value) || 0)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">BICEPS (cm)</label>
-                  <input
-                    type="number"
-                    value={biceps}
-                    onChange={(e) => setBiceps(Number(e.target.value) || 0)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">THIGH (cm)</label>
-                  <input
-                    type="number"
-                    value={thigh}
-                    onChange={(e) => setThigh(Number(e.target.value) || 0)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-                <div className="space-y-1 col-span-3">
-                  <label className="text-zinc-400">FITNESS GOAL / PROGRAM TARGET</label>
-                  <input
-                    type="text"
-                    placeholder="Weight loss, Hypertrophy, Cardiorespiratory endurance"
-                    value={fitnessGoal}
-                    onChange={(e) => setFitnessGoal(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section C: Medical Index & Safety Notes */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
-                C. Medical Warnings & Health Profile
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="space-y-1">
-                  <label className="text-zinc-400">MEDICAL CONDITIONS (DIABETES, ASTHMA, ETC.)</label>
-                  <input
-                    type="text"
-                    placeholder="None or specify medical history"
-                    value={medicalConditions}
-                    onChange={(e) => setMedicalConditions(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">INJURIES / RESTRICTIONS</label>
-                  <input
-                    type="text"
-                    placeholder="Knee injury, spinal hernia restrictions"
-                    value={injuries}
-                    onChange={(e) => setInjuries(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">ALLERGIES</label>
-                  <input
-                    type="text"
-                    placeholder="Peanut, pollen, latex allergies"
-                    value={allergies}
-                    onChange={(e) => setAllergies(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">CURRENT MEDICATIONS</label>
-                  <input
-                    type="text"
-                    placeholder="Beta-blockers, insulin, etc."
-                    value={medications}
-                    onChange={(e) => setMedications(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1 text-xs">
-                <label className="text-red-400 font-bold tracking-wider">CRITICAL MEDICAL WARNINGS / ALERTS</label>
-                <textarea
-                  value={medicalWarnings}
-                  onChange={(e) => setMedicalWarnings(e.target.value)}
-                  placeholder="EXTREMELY IMPORTANT WARNINGS (Cardiac issues, seizure alerts) stored in red warning header banner..."
-                  className="w-full bg-zinc-950 border border-red-500/20 rounded-xl p-3 text-red-100 placeholder:text-zinc-700 h-16 resize-none focus:border-red-500"
-                ></textarea>
-              </div>
-            </div>
-
-            {/* Section D: Membership & Asset Allocations */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-bold font-mono text-amber-500 uppercase tracking-widest border-b border-zinc-800 pb-1">
-                D. Membership & Gymnasium Assets
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="space-y-1">
-                  <label className="text-zinc-400">MEMBERSHIP ACCESS PLAN</label>
-                  <select
-                    value={activePlanId}
-                    onChange={(e) => setActivePlanId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300"
-                  >
-                    <option value="">No Active Plan</option>
-                    {plans.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-zinc-400">ASSIGN PROFESSIONAL COACH</label>
-                  <select
-                    value={trainerId}
-                    onChange={(e) => setTrainerId(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300"
-                  >
-                    <option value="">Unassigned (Self Training)</option>
-                    {trainers.map(t => (
-                      <option key={t.id} value={t.id}>{t.fullName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3 col-span-2">
-                  <div className="space-y-1">
-                    <label className="text-zinc-400">LOCKER NUMBER ALLOCATION</label>
-                    <input
-                      type="text"
-                      placeholder="Locker B-405, Premium Sec A"
-                      value={locker}
-                      onChange={(e) => setLocker(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-zinc-400">PERSONAL RECRUITMENT PACKAGE (PT)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 12-week Weight Cut, 48-session Bulk Plan"
-                      value={ptPackage}
-                      onChange={(e) => setPtPackage(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white"
-                    />
-                  </div>
+                {/* Vertical Step Circles indicator for Large Devices */}
+                <div className="hidden sm:flex justify-between items-center pt-2 gap-1 text-[10px] font-bold font-mono tracking-wider">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => (
+                    <div
+                      key={s}
+                      onClick={() => {
+                        // Check validation before letting them skip around if they click directly (only allowed for previously completed steps)
+                        if (s < registrationStep) {
+                          setStepDirection(s - registrationStep > 0 ? 1 : -1);
+                          setRegistrationStep(s);
+                          setStepError(null);
+                        } else if (s === registrationStep) {
+                          // Already active
+                        } else {
+                          // Try to step forward consecutively up to target s
+                          let valid = true;
+                          for (let w = registrationStep; w < s; w++) {
+                            const err = validateStepAt(w);
+                            if (err) {
+                              setStepError(`Validation barrier at Step ${w}: ${err}`);
+                              valid = false;
+                              break;
+                            }
+                          }
+                          if (valid) {
+                            setStepDirection(1);
+                            setRegistrationStep(s);
+                            setStepError(null);
+                          }
+                        }
+                      }}
+                      className={`flex-1 text-center py-2 border-b-2 transition duration-300 cursor-pointer ${
+                        s === registrationStep
+                          ? "border-amber-500 text-amber-500"
+                          : s < registrationStep
+                          ? "border-emerald-500 text-emerald-400"
+                          : "border-zinc-800 text-zinc-600"
+                      }`}
+                    >
+                      {s === 1 ? "WELCOME" :
+                       s === 2 ? "PERSONAL" :
+                       s === 3 ? "CONTACTS" :
+                       s === 4 ? "PHY" :
+                       s === 5 ? "PLAN" :
+                       s === 6 ? "PAY" :
+                       s === 7 ? "PHOTO" :
+                       s === 8 ? "MEDICAL" : "REVIEW"}
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-3">
-                <div className="space-y-2">
-                  <label className="text-zinc-400 font-bold block">PROFILE PICTURE AVATAR URL</label>
-                  <input
-                    type="text"
-                    value={photo}
-                    onChange={(e) => setPhoto(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white font-mono"
-                  />
-                  <div className="text-[10px] text-zinc-500">Or drag and select a local file to upload dynamically:</div>
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="block w-full text-[11px] text-zinc-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[11px] file:font-semibold file:bg-zinc-800 file:text-zinc-300 file:cursor-pointer"
-                  />
-                </div>
-                <div className="flex items-center gap-4 bg-zinc-950 p-4 border border-zinc-850 rounded-2xl">
-                  {photo && (
-                    <img src={photo} className="w-20 h-20 rounded-xl object-cover border border-zinc-800" referrerPolicy="no-referrer" />
+              {/* Error Notification Banners */}
+              {stepError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-red-500/10 border border-red-500/20 text-red-200 text-xs rounded-xl p-3.5 flex items-start gap-2.5"
+                >
+                  <ShieldAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <div>{stepError}</div>
+                </motion.div>
+              )}
+
+              {/* Animated Step Frame */}
+              <AnimatePresence mode="wait" custom={stepDirection}>
+                <motion.div
+                  key={registrationStep}
+                  custom={stepDirection}
+                  variants={{
+                    enter: (dir: number) => ({ x: dir > 0 ? 30 : -30, opacity: 0, scale: 0.99 }),
+                    center: { x: 0, opacity: 1, scale: 1 },
+                    exit: (dir: number) => ({ x: dir > 0 ? -30 : 30, opacity: 0, scale: 0.99 })
+                  }}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  className="min-h-[280px]"
+                >
+                  
+                  {/* STEP 1: WELCOME SCREEN */}
+                  {registrationStep === 1 && (
+                    <div className="space-y-6 flex flex-col justify-center">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                        <div className="space-y-4">
+                          <h3 className="text-2xl font-black text-white tracking-tight">
+                            Elevate Gym Registrations into a Premium Commercial Experience
+                          </h3>
+                          <p className="text-zinc-400 text-sm leading-relaxed">
+                            Welcome to the ImveloGYM registrar. We have redesigned our single-form subscription workflow into a state-saving multi-step wizard. Live BMI calculating, mock secure checkouts, and integrated camera snapping are supported.
+                          </p>
+                          <div className="flex gap-2.5 text-xs text-zinc-500 font-bold font-mono">
+                            <span className="flex items-center gap-1.5 bg-zinc-950 px-3 py-1.5 rounded-full border border-zinc-850">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500" /> ONLINE DATABASE
+                            </span>
+                            <span className="flex items-center gap-1.5 bg-zinc-950 px-3 py-1.5 rounded-full border border-zinc-850">
+                              <span className="w-2 h-2 rounded-full bg-amber-500" /> AUTO-SAVE LIVE
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Interactive local draft prompt card */}
+                        <div className="bg-zinc-950 p-6 rounded-2xl border border-zinc-850 space-y-4">
+                          {draftExists ? (
+                            <div className="space-y-3 animate-fade-in text-xs">
+                              <div className="inline-block px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-lg font-bold font-mono text-[9px]">
+                                ACTIVE DRAFT DETECTED
+                              </div>
+                              <h4 className="text-sm font-black text-white">Resume Unfinished Registration?</h4>
+                              <p className="text-zinc-500">
+                                An onboarding progress was saved in your local storage. Pick up where you left off.
+                              </p>
+                              
+                              <div className="flex gap-2 pt-1 border-t border-zinc-900 mt-2">
+                                <button
+                                  type="button"
+                                  onClick={handleLoadDraft}
+                                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-2 px-3 rounded-xl transition text-[11px]"
+                                >
+                                  Resume Progress
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm("Discard draft and clear cached values?")) {
+                                      clearDraft();
+                                    }
+                                  }}
+                                  className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-zinc-400 font-bold py-2 px-3 rounded-xl transition text-[11px]"
+                                >
+                                  Start Fresh
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 text-xs">
+                              <div className="inline-block px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg font-bold font-mono text-[9px]">
+                                READY FOR SETUP
+                              </div>
+                              <h4 className="text-sm font-black text-white">Starting Normal Onboarding</h4>
+                              <p className="text-zinc-500leading-relaxed">
+                                Form data caches immediately on change. You can secure or close the tab safely without losing registered metric scores.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setStepDirection(1);
+                                  setRegistrationStep(2);
+                                }}
+                                className="w-full bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-white font-extrabold py-2.5 rounded-xl transition text-[11px] flex justify-center items-center gap-2"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Start Registration Wizard
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   )}
-                  <div className="text-[11px] text-zinc-400">
-                    Avatar picture live preview. Stored securely on system databases.
-                  </div>
-                </div>
+
+                  {/* STEP 2: PERSONAL SECURITY PROFILE */}
+                  {registrationStep === 2 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Personal Security Profile</h3>
+                        <p className="text-xs text-zinc-500">Enter essential system identifier credentials for the member profile registry.</p>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">FULL NAME *</label>
+                          <input
+                            type="text"
+                            placeholder="Chris Hemsworth"
+                            value={fullName}
+                            onChange={(e) => {
+                              setFullName(e.target.value);
+                              setStepError(null);
+                            }}
+                            className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">EMAIL ADDRESS *</label>
+                          <input
+                            type="email"
+                            placeholder="chris@hollywood.com"
+                            value={email}
+                            onChange={(e) => {
+                              setEmail(e.target.value);
+                              setStepError(null);
+                            }}
+                            className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">PHONE DIRECTORY *</label>
+                          <input
+                            type="text"
+                            placeholder="+1-555-123-4567"
+                            value={phone}
+                            onChange={(e) => {
+                              setPhone(e.target.value);
+                              setStepError(null);
+                            }}
+                            className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">GENDER</label>
+                          <select
+                            value={gender}
+                            onChange={(e) => setGender(e.target.value as any)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 focus:outline-none text-zinc-300 focus:border-amber-500"
+                          >
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">DATE OF BIRTH</label>
+                          <input
+                            type="date"
+                            value={dob}
+                            onChange={(e) => setDob(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white font-mono focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">BLOOD GROUP</label>
+                          <select
+                            value={bloodGroup}
+                            onChange={(e) => setBloodGroup(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300 focus:border-amber-500"
+                          >
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5 col-span-1 md:col-span-3">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">PROFESSION / OCCUPATION</label>
+                          <input
+                            type="text"
+                            placeholder="Software Engineer, Athlete, Doctor"
+                            value={occupation}
+                            onChange={(e) => setOccupation(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 3: ADDRESS & EMERGENCY */}
+                  {registrationStep === 3 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Street Registry & Safety Contacts</h3>
+                        <p className="text-xs text-zinc-500">Provide physical location boundaries and safety contact directory options.</p>
+                      </div>
+
+                      <div className="space-y-4 text-xs">
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">STREET RESIDENTIAL ADDRESS</label>
+                          <textarea
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            placeholder="Street No, Area, City, State..."
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-3 text-white h-20 resize-none focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">EMERGENCY CONTACT NAME</label>
+                            <input
+                              type="text"
+                              placeholder="Relationship Contact Name (e.g., Jane Doe)"
+                              value={emergencyContactName}
+                              onChange={(e) => setEmergencyContactName(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                            />
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">EMERGENCY PHONE DIRECTORY</label>
+                            <input
+                              type="text"
+                              placeholder="Relationship Contact Telephone"
+                              value={emergencyContactPhone}
+                              onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 4: PHYSICAL MEASUREMENTS (LIVE BMI) */}
+                  {registrationStep === 4 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Physical Assessment & Biometrics</h3>
+                        <p className="text-xs text-zinc-500">Log body composition and physical metrics score.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
+                        {/* Biometric inputs */}
+                        <div className="grid grid-cols-2 gap-4 md:col-span-8">
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">HEIGHT (cm)</label>
+                            <input
+                              type="number"
+                              value={height}
+                              onChange={(e) => {
+                                setHeight(Number(e.target.value) || 0);
+                                setStepError(null);
+                              }}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">WEIGHT (kg)</label>
+                            <input
+                              type="number"
+                              value={weight}
+                              onChange={(e) => {
+                                setWeight(Number(e.target.value) || 0);
+                                setStepError(null);
+                              }}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">BODY FAT %</label>
+                            <input
+                              type="number"
+                              value={bodyFat}
+                              onChange={(e) => setBodyFat(Number(e.target.value) || 0)}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Extra dimensions */}
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">CHEST WIDTH (cm)</label>
+                            <input
+                              type="number"
+                              value={chest}
+                              onChange={(e) => setChest(Number(e.target.value) || 0)}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">WAIST SIZE (cm)</label>
+                            <input
+                              type="number"
+                              value={waist}
+                              onChange={(e) => setWaist(Number(e.target.value) || 0)}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">HIP DIAMETER (cm)</label>
+                            <input
+                              type="number"
+                              value={hip}
+                              onChange={(e) => setHip(Number(e.target.value) || 0)}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">BICEPS (cm)</label>
+                            <input
+                              type="number"
+                              value={biceps}
+                              onChange={(e) => setBiceps(Number(e.target.value) || 0)}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">THIGH (cm)</label>
+                            <input
+                              type="number"
+                              value={thigh}
+                              onChange={(e) => setThigh(Number(e.target.value) || 0)}
+                              className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-3 text-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* LIVE calculated BMI display panel */}
+                        <div className="md:col-span-4 flex flex-col justify-center items-center p-6 bg-zinc-950 border border-zinc-850 rounded-2xl text-center space-y-4">
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-zinc-500 font-black tracking-widest font-mono block">DYNAMIC ASSESSMENT</span>
+                            <span className="text-zinc-400 font-bold text-xs uppercase block">Body Mass Index</span>
+                          </div>
+                          
+                          {/* Main metric */}
+                          <div className="space-y-1">
+                            <div className="text-4xl font-black text-white tracking-tighter">
+                              {isNaN(autoBMI) || autoBMI <= 0 || autoBMI === Infinity ? "0.0" : autoBMI}
+                            </div>
+                            <span className={`inline-block px-3 py-1 font-mono text-[9px] font-black uppercase rounded-full border ${getBmiDesc(autoBMI).color}`}>
+                              {getBmiDesc(autoBMI).text}
+                            </span>
+                          </div>
+
+                          <p className="text-[10px] text-zinc-500 leading-relaxed max-w-[180px]">
+                            BMI classification metrics are based on World Health Organization (WHO) safety guidelines.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 5: PLAN SELECTION */}
+                  {registrationStep === 5 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Membership Plan Selection</h3>
+                        <p className="text-xs text-zinc-500">Configure access level parameters and assign professional facility guides.</p>
+                      </div>
+
+                      {/* Tactile pricing grids */}
+                      <div className="space-y-4 text-xs">
+                        <label className="text-zinc-400 font-bold text-[10px] tracking-wide uppercase">AVAILABLE ACCESS PLANS</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div
+                            onClick={() => setActivePlanId("")}
+                            className={`p-4 bg-zinc-950 border rounded-2xl transition duration-300 flex flex-col justify-between h-36 cursor-pointer ${
+                              !activePlanId ? "border-amber-500 bg-amber-500/5 shadow-md shadow-amber-500/5" : "border-zinc-850 hover:border-zinc-800"
+                            }`}
+                          >
+                            <div className="space-y-1.5">
+                              <span className="text-sm font-black text-white block">No Program Plan / Custom Entry</span>
+                              <span className="text-zinc-500 text-[10px]">Access on single daily checkout fees.</span>
+                            </div>
+                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-zinc-900">
+                              <span className="text-xs font-black text-zinc-400">$0.00</span>
+                              <span className="text-[10px] font-mono uppercase text-zinc-500">Unassigned</span>
+                            </div>
+                          </div>
+
+                          {plans.map((p) => (
+                            <div
+                              key={p.id}
+                              onClick={() => setActivePlanId(p.id)}
+                              className={`p-4 bg-zinc-950 border rounded-2xl transition duration-300 flex flex-col justify-between h-36 cursor-pointer ${
+                                activePlanId === p.id ? "border-amber-500 bg-amber-500/5 shadow-md shadow-amber-500/5" : "border-zinc-850 hover:border-zinc-800"
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <span className="text-sm font-black text-white block">{p.name}</span>
+                                <span className="text-zinc-500 text-[10px] line-clamp-2 leading-relaxed">{p.description}</span>
+                              </div>
+                              <div className="flex justify-between items-center mt-2 pt-2 border-t border-zinc-900">
+                                <span className="text-xs font-black text-amber-500">${p.price}</span>
+                                <span className="text-[10px] font-mono uppercase text-zinc-400">{p.duration}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Trainer Selection Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-zinc-850">
+                          <div className="space-y-1.5">
+                            <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">ASSIGN PROFESSIONAL COACH</label>
+                            <select
+                              value={trainerId}
+                              onChange={(e) => setTrainerId(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-300 text-xs focus:border-amber-500"
+                            >
+                              <option value="">Self Coaching / Self Training Program</option>
+                              {trainers.map((t) => (
+                                <option key={t.id} value={t.id}>{t.fullName}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">LOCKER ASSIGNMENT</label>
+                              <input
+                                type="text"
+                                placeholder="Locker B-405"
+                                value={locker}
+                                onChange={(e) => setLocker(e.target.value)}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs focus:border-amber-500 focus:outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">RECRUITMENT PT PACKAGE</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 12-week Weight Cut"
+                                value={ptPackage}
+                                onChange={(e) => setPtPackage(e.target.value)}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white text-xs focus:border-amber-500 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 6: PAYMENT CHECKOUT */}
+                  {registrationStep === 6 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Payment & Merchant Checkout</h3>
+                        <p className="text-xs text-zinc-500">Record billing details to generate system invoices on account validation.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
+                        {/* Simulation Column Left */}
+                        <div className="md:col-span-4 space-y-4">
+                          <label className="text-zinc-450 font-bold font-mono text-[9px] uppercase tracking-wider block">BILLING SUMMARY</label>
+                          <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-3">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-zinc-450">Item Selected</span>
+                              <span className="text-white font-bold max-w-[120px] truncate block">
+                                {plans.find(p => p.id === activePlanId)?.name || "No Access Plan"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-zinc-450">Base Price</span>
+                              <span className="text-zinc-300 font-semibold font-mono">
+                                ${plans.find(p => p.id === activePlanId)?.price || "0.00"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-zinc-450">Tax / GST (0%)</span>
+                              <span className="text-zinc-500 font-mono">$0.00</span>
+                            </div>
+                            <div className="h-px bg-zinc-900 mt-2" />
+                            <div className="flex justify-between items-center pt-1">
+                              <span className="text-white font-black text-xs">Total Dues</span>
+                              <span className="text-amber-500 font-black text-sm font-mono">
+                                ${plans.find(p => p.id === activePlanId)?.price || "0.00"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Payment Types Selector */}
+                          <div className="space-y-2">
+                            <label className="text-zinc-500 font-bold text-[9px] tracking-wider uppercase block">PAYMENT MODE DIRECTORY</label>
+                            <div className="flex gap-2">
+                              {["CASH", "CARD", "TRANSFER"].map((mType) => (
+                                <button
+                                  key={mType}
+                                  type="button"
+                                  onClick={() => setPaymentMethod(mType as any)}
+                                  className={`flex-1 py-2 text-[10px] font-extrabold tracking-wider rounded-xl transition border text-center cursor-pointer ${
+                                    paymentMethod === mType
+                                      ? "border-amber-500 bg-amber-500/10 text-amber-500"
+                                      : "border-zinc-850 bg-zinc-950 text-zinc-400 hover:text-white"
+                                  }`}
+                                >
+                                  {mType}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Simulated payment card panel */}
+                        <div className="md:col-span-8 flex flex-col justify-between space-y-4">
+                          {paymentMethod === "CARD" ? (
+                            <div className="space-y-4">
+                              {/* Glowing mockup credit card */}
+                              <div className="bg-gradient-to-br from-zinc-800 via-zinc-900 to-black p-5 border border-zinc-750 rounded-2xl shadow-xl h-44 relative overflow-hidden flex flex-col justify-between">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+                                
+                                <div className="flex justify-between items-start">
+                                  <div className="inline-block p-1 bg-zinc-900/50 border border-zinc-800 rounded">
+                                    <div className="w-8 h-6 bg-amber-500/20 rounded-sm border border-amber-500/10" />
+                                  </div>
+                                  <span className="text-[10px] font-black text-zinc-500 font-mono tracking-widest uppercase">Imvelo CARD</span>
+                                </div>
+
+                                <div className="text-lg font-mono text-zinc-100 font-semibold tracking-widest py-2">
+                                  {mockCardNumber || "••••  ••••  ••••  ••••"}
+                                </div>
+
+                                <div className="flex justify-between items-end text-[10px] font-mono text-zinc-400">
+                                  <div>
+                                    <span className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest block">Card Holder</span>
+                                    <span className="font-semibold text-zinc-200">{mockCardName || fullName || "Chris Hemsworth"}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest block">Expires</span>
+                                    <span className="font-semibold text-zinc-200">{mockCardExpiry || "MM/YY"}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Form inputs */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <label className="text-zinc-500 font-bold text-[9px] uppercase">Cardholder Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder={fullName || "Chris Hemsworth"}
+                                    value={mockCardName}
+                                    onChange={(e) => setMockCardName(e.target.value)}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-zinc-500 font-bold text-[9px] uppercase">Card Number</label>
+                                  <input
+                                    type="text"
+                                    maxLength={19}
+                                    placeholder="4111  2222  3333  4444"
+                                    value={mockCardNumber}
+                                    onChange={(e) => {
+                                      let v = e.target.value.replace(/\s+/g, "").replace(/[^0-9]/gi, "");
+                                      let matches = v.match(/\d{4,16}/g);
+                                      let match = (matches && matches[0]) || "";
+                                      let parts = [];
+                                      for (let i = 0, len = match.length; i < len; i += 4) {
+                                        parts.push(match.substring(i, i + 4));
+                                      }
+                                      if (parts.length > 0) {
+                                        setMockCardNumber(parts.join(" "));
+                                      } else {
+                                        setMockCardNumber(v);
+                                      }
+                                    }}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white font-mono"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-zinc-500 font-bold text-[9px] uppercase">Expiration Date</label>
+                                  <input
+                                    type="text"
+                                    maxLength={5}
+                                    placeholder="MM/YY"
+                                    value={mockCardExpiry}
+                                    onChange={(e) => setMockCardExpiry(e.target.value)}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white font-mono"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-zinc-500 font-bold text-[9px] uppercase">Security CVV Code</label>
+                                  <input
+                                    type="password"
+                                    maxLength={3}
+                                    placeholder="•••"
+                                    value={mockCardCVV}
+                                    onChange={(e) => setMockCardCVV(e.target.value)}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex-1 flex flex-col justify-center items-center p-8 bg-zinc-950 border border-zinc-850 rounded-2xl text-center space-y-4">
+                              <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-full text-zinc-450">
+                                <CreditCard className="w-8 h-8 text-amber-500 animate-pulse" />
+                              </div>
+                              <h4 className="text-sm font-black text-white">
+                                {paymentMethod === "CASH" ? "Standard Cash Transaction Routing" : "Interbank Transfer Checkout Logs"}
+                              </h4>
+                              <p className="text-zinc-500 max-w-[320px] leading-relaxed">
+                                {paymentMethod === "CASH" 
+                                  ? "Payment collected instantly at receptionist registers. The subscription invoice will start as pending and auto-mark paid on cash collection."
+                                  : "Electronic transfers require entering official transaction referential logs upon receipt audit validation."
+                                }
+                              </p>
+                              <span className="px-3 py-1 font-mono text-[9px] text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-full font-bold">
+                                BILLING SECURED
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 7: SECURE PHOTO CAPTURING AND AVATAR */}
+                  {registrationStep === 7 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Photography & Badge Photo Upload</h3>
+                        <p className="text-xs text-zinc-500">Record verification photo for secure facility scanning credentials.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
+                        {/* Selector Controls column */}
+                        <div className="md:col-span-7 space-y-4">
+                          <label className="text-zinc-500 font-bold text-[10px] tracking-wider uppercase">VERIFICATION CONTROLS</label>
+                          <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-3.5">
+                            
+                            {/* Manual link input */}
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] text-zinc-400 font-bold uppercase block">PROFILE IMAGE DIRECT URL</span>
+                              <input
+                                type="text"
+                                value={photo}
+                                onChange={(e) => setPhoto(e.target.value)}
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white font-mono"
+                              />
+                            </div>
+
+                            {/* Dynamically uploaded local file selector */}
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] text-zinc-400 font-bold uppercase block">UPLOAD JPG / PNG PICTURE</span>
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={handleFileChange}
+                                className="block w-full text-[11px] text-zinc-500 file:mr-4 file:py-1.5 file:px-3.5 file:rounded-xl file:border border-zinc-800 file:border-0 file:text-[11px] file:font-bold file:bg-zinc-900 file:text-zinc-300 file:cursor-pointer"
+                              />
+                            </div>
+
+                            {/* Interactive webcam activates toggles */}
+                            <div className="pt-2 border-t border-zinc-900 mt-2">
+                              {cameraActive ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={capturePhotoSnapshot}
+                                    className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold py-2 px-4 rounded-xl transition text-[11px]"
+                                  >
+                                    Snap Image
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={stopCamera}
+                                    className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-zinc-400 font-bold py-2 px-4 rounded-xl transition text-[11px]"
+                                  >
+                                    Deactivate Cam
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={startCamera}
+                                  className="w-full bg-zinc-900 border border-zinc-800 hover:bg-zinc-855 text-white font-extrabold py-2.5 rounded-xl transition text-[11px] flex justify-center items-center gap-2"
+                                >
+                                  <Camera className="w-4 h-4 text-amber-500" /> Open Live WebCamera Feed
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Webcam Video Output & Snapshot preview column */}
+                        <div className="md:col-span-5 flex flex-col items-center justify-center p-6 bg-zinc-950 border border-zinc-850 rounded-2xl relative">
+                          <div className="space-y-1.5 w-full text-center">
+                            <span className="text-[10px] text-zinc-500 font-black tracking-widest block uppercase font-mono">LIVE PREVIEW</span>
+                            
+                            <div className="aspect-square w-full max-w-[200px] bg-zinc-90 w-full bg-zinc-900 rounded-2xl border border-zinc-800 flex items-center justify-center overflow-hidden mx-auto relative relative">
+                              {cameraActive ? (
+                                <video
+                                  ref={videoRef}
+                                  className="w-full h-full object-cover scale-x-[-1]"
+                                  autoplay
+                                  playsinline
+                                />
+                              ) : (
+                                <img
+                                  src={photo}
+                                  alt="Live Avatar Snapshot"
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover border border-zinc-800"
+                                />
+                              )}
+                            </div>
+                            
+                            <p className="text-[9px] text-zinc-500 leading-relaxed max-w-[200px] mx-auto pt-1">
+                              {cameraActive 
+                                ? "Fit face clearly within the centering box bounds before snapping."
+                                : "Securely aligned with GDPR standards."
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 8: HEALTH RECORDS AND DETAILS */}
+                  {registrationStep === 8 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Health records & Compliance Indices</h3>
+                        <p className="text-xs text-zinc-500">Provide medical warnings and targets required under liability protection acts.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div className="space-y-1.5 col-span-1 md:col-span-2">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">FITNESS GOAL / PROGRAM TARGET</label>
+                          <input
+                            type="text"
+                            placeholder="Weight loss, hypertrophy, cardiovascular building..."
+                            value={fitnessGoal}
+                            onChange={(e) => setFitnessGoal(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">MEDICAL CONDITIONS</label>
+                          <input
+                            type="text"
+                            placeholder="Asthma, Diabetes, Blood pressure metrics..."
+                            value={medicalConditions}
+                            onChange={(e) => setMedicalConditions(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">PHYSICAL RESTRICTIONS / INJURIES</label>
+                          <input
+                            type="text"
+                            placeholder="Lumbar spine herniation restrictions, Knee injuries..."
+                            value={injuries}
+                            onChange={(e) => setInjuries(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">ALLERGIES</label>
+                          <input
+                            type="text"
+                            placeholder="Peanut, pollen, latex allergic reactions..."
+                            value={allergies}
+                            onChange={(e) => setAllergies(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-zinc-400 font-bold tracking-wide uppercase text-[10px]">MEDICATIONS ACTIVE</label>
+                          <input
+                            type="text"
+                            placeholder="Insulin, Beta-blockers, prescribed meds..."
+                            value={medications}
+                            onChange={(e) => setMedications(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-white focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 col-span-1 md:col-span-2">
+                          <label className="text-red-400 font-bold tracking-wider text-[10px] uppercase">
+                            CRITICAL EMERGENCY WARNINGS (CARDIOVASCULAR DICTUMS, ETC)
+                          </label>
+                          <textarea
+                            value={medicalWarnings}
+                            onChange={(e) => setMedicalWarnings(e.target.value)}
+                            placeholder="EXTREMELY SYSTEM IMPORTANT WARNINGS stored in high visibility warning borders..."
+                            className="w-full bg-zinc-950 border border-red-500/20 text-red-200 placeholder:text-zinc-700 rounded-2xl p-3 h-20 resize-none focus:border-red-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 9: FINAL COMPREHENSIVE REVIEW & BENTO GENERAL */}
+                  {registrationStep === 9 && (
+                    <div className="space-y-5">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-black text-white">Registry Consolidation & Summary</h3>
+                        <p className="text-xs text-zinc-500">Provide final confirmation before storing legal member logs on main database nodes.</p>
+                      </div>
+
+                      {/* Bento grid layout */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-2">
+                          <h4 className="font-extrabold text-amber-500 text-[10px] tracking-wider uppercase">A. Identifier Credentials</h4>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="text-zinc-500">Name: <span className="text-white font-bold block">{fullName || "N/A"}</span></div>
+                            <div className="text-zinc-500">Email: <span className="text-zinc-300 font-medium truncate block">{email || "N/A"}</span></div>
+                            <div className="text-zinc-500">Phone: <span className="text-white font-medium block">{phone || "N/A"}</span></div>
+                            <div className="text-zinc-500 font-mono">Dob: <span className="text-white block">{dob || "N/A"}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-2">
+                          <h4 className="font-extrabold text-amber-500 text-[10px] tracking-wider uppercase">B. Body Metrics Summary</h4>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="text-zinc-500">Stature: <span className="text-white font-bold">{height} cm</span></div>
+                            <div className="text-zinc-500">Weight: <span className="text-white font-bold">{weight} kg</span></div>
+                            <div className="text-zinc-550 col-span-2">
+                              BMI Index Calcs: <span className={`font-mono text-[9px] font-bold px-2 py-0.5 rounded border ml-1 ${getBmiDesc(autoBMI).color}`}>{autoBMI} ({getBmiDesc(autoBMI).text})</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-2">
+                          <h4 className="font-extrabold text-amber-500 text-[10px] tracking-wider uppercase">C. Membership access setup</h4>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="text-zinc-550">Active Plan: <span className="text-white font-extrabold block">{plans.find(p => p.id === activePlanId)?.name || "No Access Plan ($0.00)"}</span></div>
+                            <div className="text-zinc-550">Trainer: <span className="text-zinc-300 font-bold block">{trainers.find(t => t.id === trainerId)?.fullName || "No Coach Assigned"}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-2">
+                          <h4 className="font-extrabold text-amber-500 text-[10px] tracking-wider uppercase">D. Compliance alerts</h4>
+                          <div className="text-xs space-y-1">
+                            {medicalWarnings ? (
+                              <div className="text-red-400 font-bold bg-red-500/10 px-2 py-1 rounded border border-red-500/15 max-h-[48px] overflow-hidden truncate">
+                                WARNING: {medicalWarnings}
+                              </div>
+                            ) : (
+                              <div className="text-zinc-500 font-medium">No system critical alerts specified.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Onboarding security compliance signoff check */}
+                      <div className="bg-amber-500/5 border border-amber-500/15 p-4 rounded-2xl text-xs flex gap-3 text-zinc-300">
+                        <CheckSquare className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                          <strong>GDPR & Liability protection consensus validated.</strong>
+                          <p className="text-[10px] text-zinc-500 leading-relaxed pt-0.5">
+                            Submitting records logs physical indices permanently. Password credentials default back to <code className="text-white font-mono bg-zinc-950 px-1 py-0.5 rounded">password123</code>.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                </motion.div>
+              </AnimatePresence>
+
+              {/* Form Buttons navigation footer */}
+              <div className="flex gap-4 pt-4 border-t border-zinc-850">
+                {registrationStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStepDirection(-1);
+                      setRegistrationStep(registrationStep - 1);
+                      setStepError(null);
+                    }}
+                    className="flex-1 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs py-3.5 transition cursor-pointer"
+                  >
+                    Go Back
+                  </button>
+                )}
+
+                {registrationStep < 9 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const err = validateStepAt(registrationStep);
+                      if (err) {
+                        setStepError(err);
+                      } else {
+                        setStepDirection(1);
+                        setRegistrationStep(registrationStep + 1);
+                        setStepError(null);
+                      }
+                    }}
+                    className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer shadow-lg shadow-amber-500/10"
+                  >
+                    Continue Onboarding
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={registering}
+                    onClick={handleCreateMember}
+                    className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black rounded-xl text-xs py-3.5 transition cursor-pointer shadow-lg shadow-amber-500/10 flex justify-center items-center gap-2"
+                  >
+                    {registering ? (
+                      <>
+                        <Clock className="w-4 h-4 animate-spin" /> Verifying Credentials...
+                      </>
+                    ) : (
+                      "Record Profile Setup"
+                    )}
+                  </button>
+                )}
               </div>
             </div>
-
-            {/* Actions Form buttons */}
-            <div className="flex gap-4 pt-4 border-t border-zinc-800">
-              <button
-                type="button"
-                onClick={handleBackFromAdd}
-                className="flex-1 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-semibold rounded-xl text-xs py-3.5 transition cursor-pointer"
-              >
-                Go Back
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs py-3.5 transition cursor-pointer shadow-lg shadow-amber-500/10"
-              >
-                Record Profile Setup
-              </button>
-            </div>
-          </form>
+          )}
         </div>
       )}
 
