@@ -139,6 +139,15 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
     return diffDays >= 0 && diffDays <= 30;
   }).length;
 
+  // Members without billing setup (NOT CONFIGURED)
+  const membersWithoutBillingCount = members.filter(m => {
+    const hasNoPlan = !m.activePlanId;
+    const mIdStr = m.memberId || "";
+    const memberPayments = payments.filter(p => p.memberId === m.id || (mIdStr && p.memberId === mIdStr));
+    const hasNoPayments = memberPayments.length === 0;
+    return hasNoPlan || hasNoPayments;
+  }).length;
+
   // Chronological Recent Activities (interleaves Payments and Attendances)
   const attendanceActivity = attendances.map(a => ({
     id: `att-${a.id}`,
@@ -522,25 +531,34 @@ export default function DashboardView({ user, setTab }: DashboardViewProps) {
       </div>
 
       {/* Grid count stats cards - Twelve Primary Analytical Dials */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {[
-          { label: "Today's Check-ins", value: todayCheckinsCount, icon: Calendar, color: "text-[#FF8800]", desc: "Swipe entries today" },
-          { label: "Members Inside Room", value: membersCurrentlyInsideCount, icon: Users, color: "text-amber-400", desc: "Currently active" },
-          { label: "Revenue Collect Today", value: `$${revenueToday.toLocaleString()}`, icon: DollarSign, color: "text-emerald-400", desc: "Realised cash flow" },
-          { label: "Pending Fees Outstanding", value: `$${pendingFeesSum.toLocaleString()}`, icon: AlertTriangle, color: "text-rose-450", desc: "Awaiting capture" },
-          { label: "New Member Registrations", value: newRegistrationsCount, icon: Sparkles, color: "text-blue-400", desc: "Signed last 30 days" },
-          { label: "Upcoming 14d Renewals", value: upcomingRenewalsCount, icon: Clock, color: "text-purple-400", desc: "Subscribers ending soon" }
+          { label: "Today's Check-ins", value: todayCheckinsCount, icon: Calendar, color: "text-[#FF8800]", desc: "Swipe entries today", onClick: () => setTab("ATTENDANCE") },
+          { label: "Members Inside Room", value: membersCurrentlyInsideCount, icon: Users, color: "text-amber-400", desc: "Currently active", onClick: () => setTab("ATTENDANCE") },
+          { label: "Revenue Collect Today", value: `$${revenueToday.toLocaleString()}`, icon: DollarSign, color: "text-emerald-400", desc: "Realised cash flow", onClick: () => setTab("PAYMENTS") },
+          { label: "Pending Fees Outstanding", value: `$${pendingFeesSum.toLocaleString()}`, icon: AlertTriangle, color: "text-[#FF4A4A]", desc: "Awaiting capture", onClick: () => setTab("PAYMENTS") },
+          { label: "New Member Registrations", value: newRegistrationsCount, icon: Sparkles, color: "text-blue-400", desc: "Signed last 30 days", onClick: () => setTab("MEMBERS") },
+          { label: "Upcoming 14d Renewals", value: upcomingRenewalsCount, icon: Clock, color: "text-purple-400", desc: "Subscribers ending soon", onClick: () => setTab("MEMBERS") },
+          { label: "Members Without Billing Setup", value: membersWithoutBillingCount, icon: CreditCard, color: "text-zinc-400", desc: "Click to configure", onClick: () => {
+            // Put a URL query or localstorage marker to trigger "NOT CONFIGURED" fee status filter in CRM
+            localStorage.setItem("imvelogym_prefilter_fee_status", "NOT_CONFIGURED");
+            setTab("MEMBERS");
+          }}
         ].map((c, i) => {
           const Icon = c.icon;
           return (
-            <div key={i} className="bg-zinc-900 border border-zinc-850 p-4.5 rounded-2xl flex flex-col justify-between hover:border-[#FF8800]/30 transition-all shadow-md group relative overflow-hidden">
+            <div 
+              key={i} 
+              onClick={c.onClick}
+              className="bg-zinc-900 border border-zinc-850 p-4.5 rounded-2xl flex flex-col justify-between hover:border-[#FF8800]/30 transition-all shadow-md group relative overflow-hidden cursor-pointer hover:bg-zinc-850/40"
+            >
               <div className="absolute top-0 right-0 w-8 h-8 bg-[#FF8800]/5 rounded-bl-full pointer-events-none"></div>
               <div className="flex items-center justify-between">
                 <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider truncate max-w-[120px]">{c.label}</span>
                 <Icon className={`w-3.5 h-3.5 ${c.color} opacity-60 group-hover:opacity-100 transition-opacity`} />
               </div>
               <div className="mt-2.5">
-                <span className={`text-xl font-bold tracking-tight text-white`}>{c.value}</span>
+                <span className="text-xl font-bold tracking-tight text-white">{c.value}</span>
                 <p className="text-[9px] text-zinc-400 mt-1 truncate leading-tight">{c.desc}</p>
               </div>
             </div>

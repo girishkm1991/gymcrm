@@ -4,7 +4,7 @@ import {
   Plus, Search, Filter, Edit, Eye, X, ArrowLeft, Dumbbell, Activity, ShieldAlert, 
   Check, Trash2, Heart, Calendar, Clock, DollarSign, Camera, CreditCard, 
   RefreshCw, Printer, AlertTriangle, Shield, Archive, ListTodo, PlusCircle, UserCheck,
-  Layers, MessageSquare, Send, ExternalLink, Award, Sparkles, CheckSquare
+  Layers, MessageSquare, Send, ExternalLink, Award, Sparkles, CheckSquare, Settings
 } from "lucide-react";
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line 
@@ -73,15 +73,33 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   // Helper function to calculate Fee Status and billing properties
   const getFeeStatusDetails = (memberId: string, endDateStr?: string) => {
     const m = members.find(x => x.id === memberId);
-    const mIdStr = m ? m.memberId : "";
-    const memberPayments = payments.filter(p => p.memberId === memberId || (mIdStr && p.memberId === mIdStr));
-
-    if (memberPayments.length === 0) {
+    if (!m) {
       return {
         status: "NOT CONFIGURED",
         pendingAmount: 0,
         dueDate: null,
-        badgeColor: "bg-zinc-800 text-zinc-400 border border-zinc-700"
+        badgeColor: "bg-[#6B7280]/10 text-[#6B7280] border border-[#6B7280]/20 font-bold"
+      };
+    }
+    const mIdStr = m.memberId || "";
+    const memberPayments = payments.filter(p => p.memberId === memberId || (mIdStr && p.memberId === mIdStr));
+
+    // Business Rules:
+    // IF:
+    // * No membership plan assigned OR
+    // * No invoice records exist OR
+    // * No payment profile exists
+    // THEN:
+    // * Fee Status = NOT CONFIGURED
+    const hasNoPlan = !m.activePlanId;
+    const hasNoPayments = memberPayments.length === 0;
+
+    if (hasNoPlan || hasNoPayments) {
+      return {
+        status: "NOT CONFIGURED",
+        pendingAmount: 0,
+        dueDate: null,
+        badgeColor: "bg-[#6B7280]/10 text-[#6B7280] border border-[#6B7280]/20 font-bold"
       };
     }
 
@@ -156,6 +174,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [genderFilter, setGenderFilter] = useState("ALL");
+  const [feeStatusFilter, setFeeStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -474,7 +493,7 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
   async function loadData() {
     try {
-      const limitVal = filterDuesOnly ? 1000 : 10;
+      const limitVal = (filterDuesOnly || feeStatusFilter !== "ALL") ? 1000 : 10;
       const q = `?search=${search}&status=${statusFilter}&gender=${genderFilter}&page=${page}&limit=${limitVal}`;
       const response = await api.get(`/members${q}`);
       setMembers(response.data.data);
@@ -495,7 +514,15 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
 
   useEffect(() => {
     loadData();
-  }, [search, statusFilter, genderFilter, page, activeForm, filterDuesOnly]);
+  }, [search, statusFilter, genderFilter, page, activeForm, filterDuesOnly, feeStatusFilter]);
+
+  useEffect(() => {
+    const prefilter = localStorage.getItem("imvelogym_prefilter_fee_status");
+    if (prefilter === "NOT_CONFIGURED") {
+      setFeeStatusFilter("NOT CONFIGURED");
+      localStorage.removeItem("imvelogym_prefilter_fee_status");
+    }
+  }, []);
 
   useEffect(() => {
     if (initialForm) {
@@ -640,6 +667,14 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
     } catch (err) {
       alert("Error retrieving detailed multi-tenant profile metrics.");
     }
+  };
+
+  const handleConfigureBilling = async (member: any) => {
+    await handleViewProfile(member.id);
+    setActiveProfileTab("MEMBERSHIP");
+    setRenewPlanId(member.activePlanId || "");
+    setRenewPrice("");
+    setIsUpgradeOpen(true);
   };
 
   const reloadProfileSubsets = async (mId: string) => {
@@ -1185,11 +1220,20 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
         const allUnpaidPayments = payments.filter((p: any) => p.status === "Pending" || p.status === "Overdue");
         const totalPendingAmount = allUnpaidPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
         const membersWithPendingFees = new Set(allUnpaidPayments.map((p: any) => p.memberId)).size;
+        const membersWithoutBillingCount = members.filter((m) => {
+          const feeStatus = getFeeStatusDetails(m.id, m.endDate);
+          return feeStatus.status === "NOT CONFIGURED";
+        }).length;
 
         const filteredMembers = members.filter((m) => {
-          if (!filterDuesOnly) return true;
           const feeStatus = getFeeStatusDetails(m.id, m.endDate);
-          return feeStatus.pendingAmount > 0;
+          if (filterDuesOnly && feeStatus.pendingAmount <= 0) {
+            return false;
+          }
+          if (feeStatusFilter !== "ALL" && feeStatus.status !== feeStatusFilter) {
+            return false;
+          }
+          return true;
         });
 
         return (
@@ -1267,6 +1311,18 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
                 </select>
+
+                <select
+                  value={feeStatusFilter}
+                  onChange={(e) => setFeeStatusFilter(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 text-white font-medium"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="FEE PAID">Fee Paid</option>
+                  <option value="DUE SOON">Due Soon</option>
+                  <option value="OVERDUE">Overdue</option>
+                  <option value="NOT CONFIGURED">Not Configured</option>
+                </select>
               </div>
             </div>
 
@@ -1292,6 +1348,13 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                     <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">Members With Pending Fees</div>
                     <div className="text-2xl font-black text-amber-500 font-sans">
                       {membersWithPendingFees}
+                    </div>
+                  </div>
+                  <div className="hidden sm:block w-px h-8 bg-zinc-800" />
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">Without Billing Setup</div>
+                    <div className="text-2xl font-black text-zinc-400 font-sans">
+                      {membersWithoutBillingCount}
                     </div>
                   </div>
                 </div>
@@ -1390,7 +1453,17 @@ export default function MembersView({ user, setTab, initialForm, backTarget, onB
                               {feeStatus.dueDate || "—"}
                             </td>
                             <td className="py-3 px-5 text-right">
-                              <div className="flex justify-end gap-1.5">
+                              <div className="flex justify-end items-center gap-1.5 flex-wrap md:flex-nowrap">
+                                {feeStatus.status === "NOT CONFIGURED" && user.role !== "TRAINER" && (
+                                  <button
+                                    type="button"
+                                    title="Configure Billing & Plans"
+                                    onClick={() => handleConfigureBilling(m)}
+                                    className="px-2.5 py-1.5 bg-amber-500 text-black hover:bg-amber-400 font-bold rounded-xl text-[10px] tracking-wide inline-flex items-center gap-1 active:scale-95 transition"
+                                  >
+                                    <Settings className="w-3 h-3 stroke-[2.5]" /> Configure Billing
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   title="View Member Profile"
