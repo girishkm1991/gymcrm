@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Dumbbell, Activity, Users, Calendar, DollarSign, Heart, Sliders, Globe, FileText, 
   Camera, Sparkles, MessageSquare, LogOut, Menu, X, UserCheck,
-  ChevronLeft, ChevronRight, Settings, HelpCircle, PanelLeftClose, PanelLeftOpen
+  ChevronLeft, ChevronRight, Settings, HelpCircle, PanelLeftClose, PanelLeftOpen, CreditCard
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import api from "./services/api";
@@ -17,6 +17,7 @@ import WorkoutDietView from "./components/WorkoutDietView";
 import StaffView from "./components/StaffView";
 import GymsSaaSView from "./components/GymsSaaSView";
 import ReportsView from "./components/ReportsView";
+import SaaSBillingView from "./components/SaaSBillingView";
 import PlaceholderFutureView from "./components/PlaceholderFutureView";
 import { RegistrationView } from "./components/RegistrationView";
 
@@ -113,6 +114,7 @@ export default function App() {
     { id: "WORKOUT", label: "Workouts & Diet", icon: Dumbbell, roles: ["SUPER_ADMIN", "GYM_OWNER", "TRAINER", "RECEPTIONIST", "MEMBER"] },
     { id: "STAFF", label: "Staff Invites", icon: Sliders, roles: ["SUPER_ADMIN", "GYM_OWNER"] },
     { id: "SAAS", label: "Multi-Tenant SaaS", icon: Globe, roles: ["SUPER_ADMIN"] },
+    { id: "SAAS_BILLING", label: "SaaS Billing", icon: CreditCard, roles: ["SUPER_ADMIN", "GYM_OWNER"] },
     { id: "REPORTS", label: "Reports & Audits", icon: FileText, roles: ["SUPER_ADMIN", "GYM_OWNER", "RECEPTIONIST"] },
   ];
 
@@ -166,6 +168,8 @@ export default function App() {
         return <StaffView user={user} setTab={handleSetTab} />;
       case "SAAS":
         return <GymsSaaSView user={user} />;
+      case "SAAS_BILLING":
+        return <SaaSBillingView user={user} />;
       case "REPORTS":
         return <ReportsView user={user} />;
         
